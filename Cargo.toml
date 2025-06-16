@@ -1,6 +1,13 @@
 [package]
 name = "meshstack"
 version = "0.1.0"
+authors = ["Aaron F Stanton <afstanton@gmail.com>"]
+description = "CLI tool for bootstrapping resilient distributed mesh app projects"
+license = "MIT"
+repository = "https://github.com/afstanton/meshstack"
+readme = "README.md"
+keywords = ["cli", "mesh", "distributed", "bootstrap"]
+categories = ["command-line-utilities", "development-tools"]
 edition = "2024"
 
 [dependencies]
