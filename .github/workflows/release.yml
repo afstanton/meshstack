@@ -42,3 +42,11 @@ jobs:
 
       - name: Build and test
         run: cargo test
+
+      - name: Trigger Homebrew tap update
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GH_PAT }}
+          repository: afstanton/homebrew-meshstack
+          event-type: trigger-homebrew-release
+          client-payload: '{"tag": "${{ github.ref_name }}"}'
