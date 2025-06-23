@@ -46,11 +46,3 @@ jobs:
       - name: Publish to crates.io
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         continue-on-error: true
-
-      - name: Bump Homebrew formula
-        uses: mislav/bump-homebrew-formula-action@v3
-        with:
-          formula-name: meshstack
-          homebrew-tap: afstanton/homebrew-meshstack
-        env:
-          COMMITTER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
