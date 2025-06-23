@@ -1,6 +1,6 @@
 [package]
 name = "meshstack"
-version = "0.1.9"
+version = "0.1.10"
 authors = ["Aaron F Stanton <afstanton@gmail.com>"]
 description = "CLI tool for bootstrapping resilient distributed mesh app projects"
 license = "MIT"
