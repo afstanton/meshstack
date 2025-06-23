@@ -3,5 +3,4 @@ sign-tag = true
 push = true
 publish = true
 tag = true
-tag-prefix = "v"
 consolidate-commits = true
