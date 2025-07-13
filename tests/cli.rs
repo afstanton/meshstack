@@ -327,3 +327,193 @@ fn test_validate_full_command_failure_cluster()
         .failure()
         .stderr(predicate::str::contains("Failed to connect to Kubernetes cluster"));
 }
+
+#[test]
+fn test_deploy_command_all_services()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    // Create mock docker executable
+    let mock_docker_path = temp_dir.path().join("docker");
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .arg("deploy")
+        .arg("--build")
+        .arg("--push")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deploying service..."))
+        .stdout(predicate::str::contains("Deploying all services."))
+        .stdout(predicate::str::contains("--- Deploying service: my-service ---"))
+        .stdout(predicate::str::contains("Building Docker image for my-service (language: rust)..."))
+        .stdout(predicate::str::contains("Successfully built Docker image: meshstack/my-service:latest"))
+        .stdout(predicate::str::contains("Pushing Docker image for my-service to registry..."))
+        .stdout(predicate::str::contains("Successfully pushed Docker image: meshstack/my-service:latest"))
+        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."))
+        .stdout(predicate::str::contains("Deployment process completed."));
+}
+
+#[test]
+fn test_deploy_command_specific_service()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-specific-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    // Create mock docker executable
+    let mock_docker_path = temp_dir.path().join("docker");
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .arg("deploy")
+        .arg("--service")
+        .arg("my-specific-service")
+        .arg("--build")
+        .arg("--push")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deploying service..."))
+        .stdout(predicate::str::contains("Deploying specific service: my-specific-service"))
+        .stdout(predicate::str::contains("Building Docker image for my-specific-service (language: rust)..."))
+        .stdout(predicate::str::contains("Successfully built Docker image: meshstack/my-specific-service:latest"))
+        .stdout(predicate::str::contains("Pushing Docker image for my-specific-service to registry..."))
+        .stdout(predicate::str::contains("Successfully pushed Docker image: meshstack/my-specific-service:latest"))
+        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-specific-service."))
+        .stdout(predicate::str::contains("Deployment process completed."));
+}
+
+#[test]
+fn test_deploy_command_with_env()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine
+CMD echo \"Hello from Docker!\"").unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("deploy")
+        .arg("--env")
+        .arg("prod")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deploying service..."))
+        .stdout(predicate::str::contains("Applying environment profile: prod"))
+        .stdout(predicate::str::contains("--- Deploying service: my-service ---"))
+        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."))
+        .stdout(predicate::str::contains("Deployment process completed."));
+}
+
+#[test]
+fn test_deploy_command_with_build()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    // Create mock docker executable
+    let mock_docker_path = temp_dir.path().join("docker");
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .arg("deploy")
+        .arg("--build")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deploying service..."))
+        .stdout(predicate::str::contains("Building Docker image for my-service (language: rust)..."))
+        .stdout(predicate::str::contains("Mock Docker build success"))
+        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."));
+}
+
+#[test]
+fn test_deploy_command_with_push()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    // Create mock docker executable
+    let mock_docker_path = temp_dir.path().join("docker");
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .arg("deploy")
+        .arg("--push")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deploying service..."))
+        .stdout(predicate::str::contains("Pushing Docker image for my-service to registry..."))
+        .stdout(predicate::str::contains("Mock Docker push success"))
+        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."));
+}
+
+#[test]
+fn test_deploy_command_with_context()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("deploy")
+        .arg("--context")
+        .arg("my-kube-context")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deploying service..."))
+        .stdout(predicate::str::contains("Targeting Kubernetes context: my-kube-context"))
+        .stdout(predicate::str::contains("--- Deploying service: my-service ---"))
+        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."))
+        .stdout(predicate::str::contains("Deployment process completed."));
+}

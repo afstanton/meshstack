@@ -72,6 +72,28 @@ enum Commands {
         #[arg(long)]
         full: bool,
     },
+    /// Deploy one or more services to current Kubernetes context.
+    Deploy {
+        /// Deploy a single service (or all if omitted)
+        #[arg(short, long)]
+        service: Option<String>,
+
+        /// Target a specific env profile
+        #[arg(short, long)]
+        env: Option<String>,
+
+        /// Rebuild Docker image before deploy
+        #[arg(long)]
+        build: bool,
+
+        /// Push container to registry (configurable)
+        #[arg(long)]
+        push: bool,
+
+        /// Kube context override
+        #[arg(long)]
+        context: Option<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -121,6 +143,106 @@ fn main() -> Result<()> {
         Commands::Validate { config, cluster, ci, full } => {
             validate_project(*config, *cluster, *ci, *full)?;
         }
+        Commands::Deploy { service, env, build, push, context } => {
+            deploy_service(service, env, *build, *push, context)?;
+        }
+    }
+    Ok(())
+}
+
+fn deploy_service(
+    service_name: &Option<String>,
+    env: &Option<String>,
+    build: bool,
+    push: bool,
+    context: &Option<String>,
+) -> anyhow::Result<()> {
+    println!("Deploying service...");
+
+    let config_content = fs::read_to_string("meshstack.yaml")?;
+    let config: MeshstackConfig = serde_yaml::from_str(&config_content)?;
+
+    let services_dir = Path::new("services");
+    if !services_dir.exists() {
+        anyhow::bail!("Services directory not found. Please run `meshstack init` first.");
+    }
+
+    let services_to_deploy = if let Some(svc_name) = service_name {
+        vec![services_dir.join(svc_name)]
+    } else {
+        fs::read_dir(services_dir)?
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().map_or(false, |ft| ft.is_dir()))
+            .map(|entry| entry.path())
+            .collect()
+    };
+
+    if services_to_deploy.is_empty() {
+        println!("No services found to deploy.");
+        return Ok(());
+    }
+
+    for service_path in services_to_deploy {
+        let current_service_name = service_path.file_name().unwrap().to_string_lossy().into_owned();
+        println!("\n--- Deploying service: {} ---", current_service_name);
+
+        if build {
+            build_docker_image(&service_path, &current_service_name, &config)?;
+        }
+
+        if push {
+            push_docker_image(&current_service_name)?;
+        }
+
+        // Placeholder for Kubernetes deployment logic
+        println!("Kubernetes deployment logic (placeholder) for service: {}.", current_service_name);
+    }
+
+    println!("\nDeployment process completed.");
+    Ok(())
+}
+
+fn build_docker_image(service_path: &Path, service_name: &str, config: &MeshstackConfig) -> anyhow::Result<()> {
+    println!("Building Docker image for {} (language: {})...", service_name, config.language);
+    let dockerfile_path = service_path.join("Dockerfile");
+    if !dockerfile_path.exists() {
+        anyhow::bail!("Dockerfile not found in {}.", service_path.display());
+    }
+
+    let image_name = format!("meshstack/{}:latest", service_name);
+    let output = Command::new("docker")
+        .arg("build")
+        .arg("-t")
+        .arg(&image_name)
+        .arg(&service_path)
+        .output()?;
+
+    if output.status.success() {
+        println!("Successfully built Docker image: {}\n{}", image_name, String::from_utf8_lossy(&output.stdout));
+    } else {
+        anyhow::bail!("Failed to build Docker image for {}:\n{}\n{}",
+            service_name,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr));
+    }
+    Ok(())
+}
+
+fn push_docker_image(service_name: &str) -> anyhow::Result<()> {
+    println!("Pushing Docker image for {} to registry...", service_name);
+    let image_name = format!("meshstack/{}:latest", service_name);
+    let output = Command::new("docker")
+        .arg("push")
+        .arg(&image_name)
+        .output()?;
+
+    if output.status.success() {
+        println!("Successfully pushed Docker image: {}\n{}", image_name, String::from_utf8_lossy(&output.stdout));
+    } else {
+        anyhow::bail!("Failed to push Docker image for {}:\n{}\n{}",
+            service_name,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr));
     }
     Ok(())
 }
