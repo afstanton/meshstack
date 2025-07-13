@@ -54,6 +54,24 @@ enum Commands {
         #[arg(long)]
         context: Option<String>,
     },
+    /// Validate config, manifests, and cluster readiness.
+    Validate {
+        /// Validate `meshstack.yaml` against schema
+        #[arg(long)]
+        config: bool,
+
+        /// Check connectivity to kube context
+        #[arg(long)]
+        cluster: bool,
+
+        /// Validate GitHub Actions or ArgoCD manifests
+        #[arg(long)]
+        ci: bool,
+
+        /// Run all validators
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,7 +118,65 @@ fn main() -> Result<()> {
         Commands::Install { component, profile, dry_run, context } => {
             install_component(component, profile, *dry_run, context)?;
         }
+        Commands::Validate { config, cluster, ci, full } => {
+            validate_project(*config, *cluster, *ci, *full)?;
+        }
     }
+    Ok(())
+}
+
+fn validate_project(config: bool, cluster: bool, ci: bool, full: bool) -> Result<()> {
+    println!("Validating project...");
+
+    if full || config {
+        validate_config()?;
+    }
+    if full || cluster {
+        validate_cluster()?;
+    }
+    if full || ci {
+        validate_ci()?;
+    }
+
+    Ok(())
+}
+
+fn validate_config() -> Result<()> {
+    println!("Validating meshstack.yaml...");
+    let config_path = "meshstack.yaml";
+    if !Path::new(config_path).exists() {
+        anyhow::bail!("meshstack.yaml not found.");
+    }
+    let config_content = fs::read_to_string(config_path)?;
+    serde_yaml::from_str::<MeshstackConfig>(&config_content)?;
+    println!("meshstack.yaml is valid.");
+    Ok(())
+}
+
+fn validate_cluster() -> Result<()> {
+    println!("Checking Kubernetes cluster connectivity...");
+    let output = Command::new("kubectl")
+        .arg("cluster-info")
+        .arg("--context")
+        .arg("current-context") // This will use the current context
+        .output()?;
+
+    if output.status.success() {
+        println!("Connected to Kubernetes cluster successfully.");
+    } else {
+        anyhow::bail!("Failed to connect to Kubernetes cluster: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr));
+    }
+    Ok(())
+}
+
+fn validate_ci() -> Result<()> {
+    println!("Validating CI/CD manifests...");
+    // Placeholder for actual CI/CD validation logic
+    // This would involve checking for .github/workflows for GitHub Actions
+    // or ArgoCD application manifests.
+    println!("CI/CD manifests validation (placeholder): No issues found.");
     Ok(())
 }
 

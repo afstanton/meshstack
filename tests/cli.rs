@@ -157,3 +157,173 @@ fn test_install_command_with_custom_profile()
         .failure()
         .stderr(predicate::str::contains("Custom profile not yet implemented."));
 }
+
+#[test]
+fn test_validate_config_command_success()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("validate")
+        .arg("--config")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Validating project..."))
+        .stdout(predicate::str::contains("Validating meshstack.yaml..."))
+        .stdout(predicate::str::contains("meshstack.yaml is valid."));
+}
+
+#[test]
+fn test_validate_config_command_file_not_found()
+{
+    let temp_dir = tempdir().unwrap();
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("validate")
+        .arg("--config")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("meshstack.yaml not found."));
+}
+
+#[test]
+fn test_validate_config_command_invalid_yaml()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github: invalid_line"; // Invalid YAML
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("validate")
+        .arg("--config")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Error: mapping values are not allowed in this context"));
+}
+
+#[test]
+fn test_validate_cluster_command_success()
+{
+    let temp_dir = tempdir().unwrap();
+    // Create a mock kubectl that always succeeds
+    let mock_kubectl_path = temp_dir.path().join("kubectl");
+    fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Kubernetes master is running at https://127.0.0.1:8080'\nexit 0").unwrap();
+    // Make it executable
+    Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
+        .arg("validate")
+        .arg("--cluster")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Checking Kubernetes cluster connectivity..."))
+        .stdout(predicate::str::contains("Connected to Kubernetes cluster successfully."));
+}
+
+#[test]
+fn test_validate_cluster_command_failure()
+{
+    let temp_dir = tempdir().unwrap();
+    // Create a mock kubectl that always fails
+    let mock_kubectl_path = temp_dir.path().join("kubectl");
+    fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Unable to connect to the server: dial tcp 127.0.0.1:8080: connect: connection refused' >&2\nexit 1").unwrap();
+    // Make it executable
+    Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
+        .arg("validate")
+        .arg("--cluster")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to connect to Kubernetes cluster"));
+}
+
+#[test]
+fn test_validate_ci_command()
+{
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("validate")
+        .arg("--ci")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Validating CI/CD manifests..."))
+        .stdout(predicate::str::contains("CI/CD manifests validation (placeholder): No issues found."));
+}
+
+#[test]
+fn test_validate_full_command_success()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    // Create a mock kubectl that always succeeds
+    let mock_kubectl_path = temp_dir.path().join("kubectl");
+    fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Kubernetes master is running at https://127.0.0.1:8080'\nexit 0").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
+        .arg("validate")
+        .arg("--full")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Validating project..."))
+        .stdout(predicate::str::contains("meshstack.yaml is valid."))
+        .stdout(predicate::str::contains("Connected to Kubernetes cluster successfully."))
+        .stdout(predicate::str::contains("CI/CD manifests validation (placeholder): No issues found."));
+}
+
+#[test]
+fn test_validate_full_command_failure_config()
+{
+    let temp_dir = tempdir().unwrap();
+    // No meshstack.yaml to simulate config validation failure
+
+    // Create a mock kubectl that always succeeds
+    let mock_kubectl_path = temp_dir.path().join("kubectl");
+    fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Kubernetes master is running at https://127.0.0.1:8080'\nexit 0").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
+        .arg("validate")
+        .arg("--full")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("meshstack.yaml not found."));
+}
+
+#[test]
+fn test_validate_full_command_failure_cluster()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    // Create a mock kubectl that always fails
+    let mock_kubectl_path = temp_dir.path().join("kubectl");
+    fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Unable to connect to the server: dial tcp 127.0.0.1:8080: connect: connection refused' >&2\nexit 1").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
+        .arg("validate")
+        .arg("--full")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to connect to Kubernetes cluster"));
+}
