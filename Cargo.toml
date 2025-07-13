@@ -11,3 +11,12 @@ categories = ["command-line-utilities", "development-tools"]
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+anyhow = "1.0"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1.0"
+tempfile = "3.10.1"

@@ -50,3 +50,6 @@ jobs:
           repository: afstanton/homebrew-meshstack
           event-type: trigger-homebrew-release
           client-payload: '{"tag": "${{ github.ref_name }}"}'
+
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
