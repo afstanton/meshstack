@@ -52,6 +52,69 @@ fn test_init_command_with_config_file()
 }
 
 #[test]
+fn test_init_command_with_name()
+{
+    let temp_dir = tempdir().unwrap();
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("init")
+        .arg("--name")
+        .arg("my-named-app")
+        .assert()
+        .success();
+
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let meshstack_yaml_content = fs::read_to_string(meshstack_yaml_path).unwrap();
+
+    assert!(predicate::str::contains("project_name: my-named-app").eval(&meshstack_yaml_content));
+    assert!(predicate::str::contains("language: rust").eval(&meshstack_yaml_content)); // Default language
+    assert!(predicate::str::contains("service_mesh: istio").eval(&meshstack_yaml_content)); // Default service mesh
+    assert!(predicate::str::contains("ci_cd: github").eval(&meshstack_yaml_content)); // Default CI/CD
+}
+
+#[test]
+fn test_init_command_with_language()
+{
+    let temp_dir = tempdir().unwrap();
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("init")
+        .arg("--language")
+        .arg("go")
+        .assert()
+        .success();
+
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let meshstack_yaml_content = fs::read_to_string(meshstack_yaml_path).unwrap();
+
+    assert!(predicate::str::contains("project_name: my-app").eval(&meshstack_yaml_content)); // Default project name
+    assert!(predicate::str::contains("language: go").eval(&meshstack_yaml_content));
+    assert!(predicate::str::contains("service_mesh: istio").eval(&meshstack_yaml_content)); // Default service mesh
+    assert!(predicate::str::contains("ci_cd: github").eval(&meshstack_yaml_content)); // Default CI/CD
+}
+
+#[test]
+fn test_init_command_with_mesh()
+{
+    let temp_dir = tempdir().unwrap();
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("init")
+        .arg("--mesh")
+        .arg("linkerd")
+        .assert()
+        .success();
+
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let meshstack_yaml_content = fs::read_to_string(meshstack_yaml_path).unwrap();
+
+    assert!(predicate::str::contains("project_name: my-app").eval(&meshstack_yaml_content)); // Default project name
+    assert!(predicate::str::contains("language: rust").eval(&meshstack_yaml_content)); // Default language
+    assert!(predicate::str::contains("service_mesh: linkerd").eval(&meshstack_yaml_content));
+    assert!(predicate::str::contains("ci_cd: github").eval(&meshstack_yaml_content)); // Default CI/CD
+}
+
+#[test]
 fn test_install_command()
 {
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -112,7 +175,27 @@ fn test_install_command_with_profile()
         .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install prometheus prometheus-community/prometheus --values prod-values.yaml"#))
         .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install grafana grafana/grafana --values prod-values.yaml"#))
         .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install cert-manager cert-manager/cert-manager --values prod-values.yaml"#))
-        .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install nginx-ingress ingress-nginx/ingress-nginx --values prod-values.yaml"#));
+        .stdout(predicate::str::contains("DRY RUN: Would execute helm command: helm install nginx-ingress ingress-nginx/ingress-nginx --values prod-values.yaml"));
+}
+
+#[test]
+fn test_install_command_with_dev_profile()
+{
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .arg("install")
+        .arg("--profile")
+        .arg("dev")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Installing components..."))
+        .stdout(predicate::str::contains("No component specified, installing default set."))
+        .stdout(predicate::str::contains("Applying profile: dev"))
+        .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install istio istio/istio --values dev-values.yaml"#))
+        .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install prometheus prometheus-community/prometheus --values dev-values.yaml"#))
+        .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install grafana grafana/grafana --values dev-values.yaml"#))
+        .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install cert-manager cert-manager/cert-manager --values dev-values.yaml"#))
+        .stdout(predicate::str::contains(r#"DRY RUN: Would execute helm command: helm install nginx-ingress ingress-nginx/ingress-nginx --values dev-values.yaml"#));
 }
 
 #[test]
@@ -588,9 +671,9 @@ fn test_deploy_command_docker_build_fails()
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
 
-    // Create mock docker executable that fails on build
+    // Create mock docker executable that always fails
     let mock_docker_path = temp_dir.path().join("docker");
-    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build failure\" >&2; exit 1; fi\n").unwrap();
+    fs::write(&mock_docker_path, "#!/bin/bash\necho \"Mock Docker build failure\" >&2; exit 1\n").unwrap();
     Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -725,4 +808,139 @@ fn test_status_command() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Showing project status..."));
+}
+
+#[test]
+fn test_status_command_components() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("status")
+        .arg("--components")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Showing project status..."))
+        .stdout(predicate::str::contains("Showing installed infrastructure and versions..."));
+}
+
+#[test]
+fn test_status_command_services() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("status")
+        .arg("--services")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Showing project status..."))
+        .stdout(predicate::str::contains("Showing running app services..."));
+}
+
+#[test]
+fn test_status_command_lockfile() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("status")
+        .arg("--lockfile")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Showing project status..."))
+        .stdout(predicate::str::contains("Comparing current state with meshstack.lock..."));
+}
+
+#[test]
+fn test_status_command_context() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("status")
+        .arg("--context")
+        .arg("my-kube-context")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Showing project status..."))
+        .stdout(predicate::str::contains("Showing per-kube-context state for: my-kube-context"));
+}
+
+#[test]
+fn test_destroy_command_all() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--all")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Destroying all resources."));
+}
+
+#[test]
+fn test_update_command_apply() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--apply")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Applying all updates automatically..."));
+}
+
+#[test]
+fn test_init_command_with_ci()
+{
+    let temp_dir = tempdir().unwrap();
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("init")
+        .arg("--ci")
+        .arg("argo")
+        .assert()
+        .success();
+
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let meshstack_yaml_content = fs::read_to_string(meshstack_yaml_path).unwrap();
+
+    assert!(predicate::str::contains("project_name: my-app").eval(&meshstack_yaml_content)); // Default project name
+    assert!(predicate::str::contains("language: rust").eval(&meshstack_yaml_content)); // Default language
+    assert!(predicate::str::contains("service_mesh: istio").eval(&meshstack_yaml_content)); // Default service mesh
+    assert!(predicate::str::contains("ci_cd: argo").eval(&meshstack_yaml_content));
+}
+
+#[test]
+fn test_install_command_dry_run()
+{
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .arg("install")
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Installing components..."))
+        .stdout(predicate::str::contains("DRY RUN: Would execute helm command: helm install istio istio/istio --dry-run"));
+}
+
+#[test]
+fn test_update_command_with_component() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--component")
+        .arg("istio")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Updating component: istio"));
+}
+
+#[test]
+fn test_update_command_template() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--template")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Updating project templates..."));
+}
+
+#[test]
+fn test_update_command_infra() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--infra")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Updating infra charts..."));
 }

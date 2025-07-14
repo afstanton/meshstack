@@ -113,6 +113,10 @@ enum Commands {
         #[arg(long)]
         full: bool,
 
+        /// Nuke from orbit (dev/test use only)
+        #[arg(long)]
+        all: bool,
+
         /// Kube context override
         #[arg(long)]
         context: Option<String>,
@@ -216,8 +220,8 @@ fn main() -> Result<()> {
         Commands::Deploy { service, env, build, push, context } => {
             deploy_service(service, env, *build, *push, context)?;
         }
-        Commands::Destroy { service, component, full, context, confirm } => {
-            destroy_project(service, component, *full, context, *confirm)?;
+        Commands::Destroy { service, component, full, context, confirm, all } => {
+            destroy_project(service, component, *full, context, *confirm, *all)?;
         }
         Commands::Update { check, apply, component, template, infra } => {
             update_project(*check, *apply, component, *template, *infra)?;
@@ -329,8 +333,11 @@ fn destroy_project(
     full: bool,
     context: &Option<String>,
     confirm: bool,
+    all: bool,
 ) -> anyhow::Result<()> {
     println!("Destroying project...");
+
+    let destroy_full = full || all;
 
     if let Some(service) = service {
         println!("Destroying service: {}", service);
@@ -340,7 +347,7 @@ fn destroy_project(
         println!("Destroying component: {}", component);
     }
 
-    if full {
+    if destroy_full {
         println!("Destroying all resources.");
     }
 
