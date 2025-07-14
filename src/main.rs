@@ -36,6 +36,11 @@ enum Commands {
         #[arg(long)]
         config: Option<String>,
     },
+    /// Create a new mesh app project with config and template structure.
+    New { 
+        /// Name of the project
+        name: String,
+    },
     /// Install infrastructure components into current Kubernetes cluster.
     Install {
         /// Specific component (e.g. `istio`, `prometheus`, `vault`)
@@ -94,6 +99,68 @@ enum Commands {
         #[arg(long)]
         context: Option<String>,
     },
+    /// Destroy project resources.
+    Destroy {
+        /// Service to destroy
+        #[arg(short, long)]
+        service: Option<String>,
+
+        /// Component to destroy
+        #[arg(short, long)]
+        component: Option<String>,
+
+        /// Destroy all resources
+        #[arg(long)]
+        full: bool,
+
+        /// Kube context override
+        #[arg(long)]
+        context: Option<String>,
+
+        /// Bypasses confirmation prompt
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Update installed components or generated files.
+    Update {
+        /// Show available updates
+        #[arg(long)]
+        check: bool,
+
+        /// Apply all updates automatically
+        #[arg(long)]
+        apply: bool,
+
+        /// Target a specific component
+        #[arg(short, long)]
+        component: Option<String>,
+
+        /// Update project templates (Dockerfile, Helm, etc.)
+        #[arg(long)]
+        template: bool,
+
+        /// Update infra charts (e.g. mesh version bump)
+        #[arg(long)]
+        infra: bool,
+    },
+    /// Show meshstack-managed resources and current versions.
+    Status {
+        /// Show installed infrastructure and versions
+        #[arg(long)]
+        components: bool,
+
+        /// Show running app services
+        #[arg(long)]
+        services: bool,
+
+        /// Compare current state with `meshstack.lock`
+        #[arg(long)]
+        lockfile: bool,
+
+        /// Show per-kube-context state
+        #[arg(long)]
+        context: Option<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -137,6 +204,9 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::New { name } => {
+            new_project(name)?;
+        }
         Commands::Install { component, profile, dry_run, context } => {
             install_component(component, profile, *dry_run, context)?;
         }
@@ -146,7 +216,48 @@ fn main() -> Result<()> {
         Commands::Deploy { service, env, build, push, context } => {
             deploy_service(service, env, *build, *push, context)?;
         }
+        Commands::Destroy { service, component, full, context, confirm } => {
+            destroy_project(service, component, *full, context, *confirm)?;
+        }
+        Commands::Update { check, apply, component, template, infra } => {
+            update_project(*check, *apply, component, *template, *infra)?;
+        }
+        Commands::Status { components, services, lockfile, context } => {
+            status_project(*components, *services, *lockfile, context)?;
+        }
     }
+    Ok(())
+}
+
+fn new_project(name: &String) -> anyhow::Result<()> {
+    println!("Creating new project: {}...", name);
+    Ok(())
+}
+
+fn status_project(
+    components: bool,
+    services: bool,
+    lockfile: bool,
+    context: &Option<String>,
+) -> anyhow::Result<()> {
+    println!("Showing project status...");
+
+    if components {
+        println!("Showing installed infrastructure and versions...");
+    }
+
+    if services {
+        println!("Showing running app services...");
+    }
+
+    if lockfile {
+        println!("Comparing current state with meshstack.lock...");
+    }
+
+    if let Some(context) = context {
+        println!("Showing per-kube-context state for: {}", context);
+    }
+
     Ok(())
 }
 
@@ -159,6 +270,14 @@ fn deploy_service(
 ) -> anyhow::Result<()> {
     println!("Deploying service...");
 
+    if let Some(env) = env {
+        println!("Applying environment profile: {}", env);
+    }
+
+    if let Some(context) = context {
+        println!("Targeting Kubernetes context: {}", context);
+    }
+
     let config_content = fs::read_to_string("meshstack.yaml")?;
     let config: MeshstackConfig = serde_yaml::from_str(&config_content)?;
 
@@ -168,8 +287,10 @@ fn deploy_service(
     }
 
     let services_to_deploy = if let Some(svc_name) = service_name {
+        println!("Deploying specific service: {}", svc_name);
         vec![services_dir.join(svc_name)]
     } else {
+        println!("Deploying all services.");
         fs::read_dir(services_dir)?
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_type().map_or(false, |ft| ft.is_dir()))
@@ -199,6 +320,40 @@ fn deploy_service(
     }
 
     println!("\nDeployment process completed.");
+    Ok(())
+}
+
+fn destroy_project(
+    service: &Option<String>,
+    component: &Option<String>,
+    full: bool,
+    context: &Option<String>,
+    confirm: bool,
+) -> anyhow::Result<()> {
+    println!("Destroying project...");
+
+    if let Some(service) = service {
+        println!("Destroying service: {}", service);
+    }
+
+    if let Some(component) = component {
+        println!("Destroying component: {}", component);
+    }
+
+    if full {
+        println!("Destroying all resources.");
+    }
+
+    if let Some(context) = context {
+        println!("Using Kubernetes context: {}", context);
+    }
+
+    if confirm {
+        println!("Confirmation received. Proceeding with destruction.");
+    } else {
+        println!("Dry run complete. No resources were destroyed.");
+    }
+
     Ok(())
 }
 
@@ -390,6 +545,38 @@ fn install_component(
             eprintln!("Stderr:\n{}", String::from_utf8_lossy(&output.stderr));
             anyhow::bail!("Helm command failed for {}", release_name);
         }
+    }
+
+    Ok(())
+}
+
+fn update_project(
+    check: bool,
+    apply: bool,
+    component: &Option<String>,
+    template: bool,
+    infra: bool,
+) -> anyhow::Result<()> {
+    println!("Updating project...");
+
+    if check {
+        println!("Checking for available updates...");
+    }
+
+    if apply {
+        println!("Applying all updates automatically...");
+    }
+
+    if let Some(component) = component {
+        println!("Updating component: {}", component);
+    }
+
+    if template {
+        println!("Updating project templates...");
+    }
+
+    if infra {
+        println!("Updating infra charts...");
     }
 
     Ok(())

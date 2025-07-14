@@ -238,7 +238,8 @@ fn test_validate_cluster_command_failure()
     Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
         .arg("validate")
         .arg("--cluster")
         .assert()
@@ -415,8 +416,7 @@ fn test_deploy_command_with_env()
 
     let service_dir = temp_dir.path().join("services").join("my-service");
     fs::create_dir_all(&service_dir).unwrap();
-    fs::write(service_dir.join("Dockerfile"), "FROM alpine
-CMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
@@ -516,4 +516,213 @@ fn test_deploy_command_with_context()
         .stdout(predicate::str::contains("--- Deploying service: my-service ---"))
         .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."))
         .stdout(predicate::str::contains("Deployment process completed."));
+}
+
+
+#[test]
+fn test_deploy_command_no_services_found()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let services_dir = temp_dir.path().join("services");
+    fs::create_dir_all(&services_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("deploy")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deploying service..."))
+        .stdout(predicate::str::contains("No services found to deploy."));
+}
+
+#[test]
+fn test_deploy_command_services_dir_not_found()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("deploy")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Services directory not found. Please run `meshstack init` first."));
+}
+
+#[test]
+fn test_deploy_command_dockerfile_not_found()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    // No Dockerfile
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("deploy")
+        .arg("--build")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Dockerfile not found"));
+}
+
+#[test]
+fn test_deploy_command_docker_build_fails()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    // Create mock docker executable that fails on build
+    let mock_docker_path = temp_dir.path().join("docker");
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build failure\" >&2; exit 1; fi\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .arg("deploy")
+        .arg("--build")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to build Docker image for my-service"));
+}
+
+#[test]
+fn test_deploy_command_docker_push_fails()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    // Create mock docker executable that fails on push
+    let mock_docker_path = temp_dir.path().join("docker");
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push failure\" >&2; exit 1; fi\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .arg("deploy")
+        .arg("--build")
+        .arg("--push")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to push Docker image for my-service"));
+}
+#[test]
+fn test_destroy_command() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."));
+}
+
+#[test]
+fn test_destroy_command_with_confirmation() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--confirm")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Confirmation received. Proceeding with destruction."));
+}
+
+#[test]
+fn test_destroy_command_without_confirmation() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Dry run complete. No resources were destroyed."));
+}
+
+#[test]
+fn test_destroy_command_with_service() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--service")
+        .arg("my-service")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Destroying service: my-service"));
+}
+
+#[test]
+fn test_destroy_command_with_component() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--component")
+        .arg("istio")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Destroying component: istio"));
+}
+
+#[test]
+fn test_destroy_command_with_full() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--full")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Destroying all resources."));
+}
+
+#[test]
+fn test_destroy_command_with_context() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--context")
+        .arg("my-kube-context")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Using Kubernetes context: my-kube-context"));
+}
+
+#[test]
+fn test_update_command() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Checking for available updates..."));
+}
+
+#[test]
+fn test_status_command() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Showing project status..."));
 }
