@@ -136,6 +136,6 @@ This document outlines the core CLI commands available in Meshstack v0.1. Each c
 
 ## 🛠️ Future Commands (planned)
 
-- `bootstrap` – full local cluster and infra setup (dev-only)
-- `generate` – re-generate scaffolds based on config
-- `plan` – dry-run of what would be installed/deployed/changed
+- `bootstrap` – full local cluster and infra setup (dev-only) ([specs](bootstrap_command_specs.md))
+- `generate` – re-generate scaffolds based on config ([specs](generate_command_specs.md))
+- `plan` – dry-run of what would be installed/deployed/changed ([specs](plan_command_specs.md))
