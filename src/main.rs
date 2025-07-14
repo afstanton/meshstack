@@ -36,11 +36,6 @@ enum Commands {
         #[arg(long)]
         config: Option<String>,
     },
-    /// Create a new mesh app project with config and template structure.
-    New { 
-        /// Name of the project
-        name: String,
-    },
     /// Install infrastructure components into current Kubernetes cluster.
     Install {
         /// Specific component (e.g. `istio`, `prometheus`, `vault`)
@@ -208,9 +203,6 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Commands::New { name } => {
-            new_project(name)?;
-        }
         Commands::Install { component, profile, dry_run, context } => {
             install_component(component, profile, *dry_run, context)?;
         }
@@ -233,9 +225,20 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn new_project(name: &String) -> anyhow::Result<()> {
-    println!("Creating new project: {}...", name);
-    Ok(())
+// Helper function to run external commands and handle their output
+fn run_command(mut command: Command, command_name: &str) -> anyhow::Result<String> {
+    let output = command.output()?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        anyhow::bail!(
+            "{} command failed:\nStdout: {}\nStderr: {}",
+            command_name,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
 
 fn status_project(
@@ -319,11 +322,74 @@ fn deploy_service(
             push_docker_image(&current_service_name)?;
         }
 
-        // Placeholder for Kubernetes deployment logic
-        println!("Kubernetes deployment logic (placeholder) for service: {}.", current_service_name);
+        // Kubernetes deployment logic
+        // Only deploy helm chart if not in a test environment with any dry run flag
+        if std::env::var("MESHSTACK_TEST_DRY_RUN_HELM").is_err() &&
+           std::env::var("MESHSTACK_TEST_DRY_RUN_DOCKER").is_err() &&
+           std::env::var("MESHSTACK_TEST_DRY_RUN_KUBECTL").is_err() {
+            deploy_helm_chart(&service_path, &current_service_name, env, context)?;
+        }
     }
 
     println!("\nDeployment process completed.");
+    Ok(())
+}
+
+fn deploy_helm_chart(
+    service_path: &Path,
+    service_name: &str,
+    env: &Option<String>,
+    context: &Option<String>,
+) -> anyhow::Result<()> {
+    println!("Deploying Helm chart for service: {}...", service_name);
+
+    let chart_path = service_path;
+    if !chart_path.join("Chart.yaml").exists() {
+        anyhow::bail!("Helm chart (Chart.yaml) not found in {}.", chart_path.display());
+    }
+
+    let release_name = format!("meshstack-{}", service_name);
+
+    let mut command = Command::new("helm");
+    command.arg("upgrade");
+    command.arg("--install");
+    command.arg(&release_name);
+    command.arg(chart_path);
+
+    if let Some(ctx) = context {
+        command.arg("--kube-context");
+        command.arg(ctx);
+    }
+
+    if let Some(e) = env {
+        let values_file = match e.as_str() {
+            "dev" => Some("dev-values.yaml"),
+            "prod" => Some("prod-values.yaml"),
+            "staging" => Some("staging-values.yaml"),
+            _ => anyhow::bail!("Unknown environment: {}. Valid environments are: dev, prod, staging", e),
+        };
+
+        if let Some(file) = values_file {
+            let env_values_path = Path::new(file);
+            if env_values_path.exists() {
+                command.arg("--values");
+                command.arg(env_values_path);
+            } else {
+                println!("Warning: Environment values file {} not found. Skipping.", file);
+            }
+        }
+    }
+
+    // Check if we are in a test environment and should dry run helm execution
+    if std::env::var("MESHSTACK_TEST_DRY_RUN_HELM").is_ok() {
+        let command_str = format!("helm {}", command.get_args().map(|s| s.to_str().unwrap()).collect::<Vec<&str>>().join(" "));
+        println!("DRY RUN: Would execute helm command: {}", command_str);
+        return Ok(());
+    }
+
+    let stdout = run_command(command, &format!("helm upgrade --install {}", release_name))?;
+    println!("Successfully deployed service: {}\n{}", service_name, stdout);
+
     Ok(())
 }
 
@@ -339,27 +405,79 @@ fn destroy_project(
 
     let destroy_full = full || all;
 
-    if let Some(service) = service {
-        println!("Destroying service: {}", service);
+    if !confirm && (service.is_some() || component.is_some() || destroy_full) {
+        println!("Dry run complete. No resources were destroyed. Use --confirm to proceed.");
+        return Ok(());
     }
 
-    if let Some(component) = component {
-        println!("Destroying component: {}", component);
+    if let Some(svc) = service {
+        println!("Destroying service: {}", svc);
+        uninstall_helm_release(&format!("meshstack-{}", svc), context)?;
+    }
+
+    if let Some(comp) = component {
+        println!("Destroying component: {}", comp);
+        // For now, assume components are also Helm releases. This might need more sophisticated logic later.
+        uninstall_helm_release(comp, context)?;
     }
 
     if destroy_full {
         println!("Destroying all resources.");
-    }
+        // Uninstall all known infrastructure components
+        let infra_components = vec!["istio", "prometheus", "grafana", "cert-manager", "nginx-ingress", "vault"];
+        for comp in infra_components {
+            println!("Uninstalling infrastructure component: {}", comp);
+            uninstall_helm_release(comp, context)?;
+        }
 
-    if let Some(context) = context {
-        println!("Using Kubernetes context: {}", context);
+        // Discover and uninstall all services
+        let services_dir = Path::new("services");
+        if services_dir.exists() {
+            for entry in fs::read_dir(services_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(svc_name) = path.file_name().and_then(|n| n.to_str()) {
+                        println!("Uninstalling service: {}", svc_name);
+                        uninstall_helm_release(&format!("meshstack-{}", svc_name), context)?;
+                    }
+                }
+            }
+        }
+
+        // Optionally remove local project files (as per spec, but requires user confirmation)
+        // For now, we'll just print a message.
+        println!("Local project files (meshstack.yaml, services/, provision/) would be removed with --all. This is a placeholder.");
     }
 
     if confirm {
         println!("Confirmation received. Proceeding with destruction.");
-    } else {
-        println!("Dry run complete. No resources were destroyed.");
     }
+
+    Ok(())
+}
+
+fn uninstall_helm_release(release_name: &str, context: &Option<String>) -> anyhow::Result<()> {
+    println!("Uninstalling Helm release: {}...", release_name);
+
+    let mut command = Command::new("helm");
+    command.arg("uninstall");
+    command.arg(release_name);
+
+    if let Some(ctx) = context {
+        command.arg("--kube-context");
+        command.arg(ctx);
+    }
+
+    // Check if we are in a test environment and should dry run helm execution
+    if std::env::var("MESHSTACK_TEST_DRY_RUN_HELM").is_ok() {
+        let command_str = format!("helm {}", command.get_args().map(|s| s.to_str().unwrap()).collect::<Vec<&str>>().join(" "));
+        println!("DRY RUN: Would execute helm command: {}", command_str);
+        return Ok(());
+    }
+
+    let stdout = run_command(command, &format!("helm uninstall {}", release_name))?;
+    println!("Successfully uninstalled Helm release: {}\n{}", release_name, stdout);
 
     Ok(())
 }
@@ -372,40 +490,36 @@ fn build_docker_image(service_path: &Path, service_name: &str, config: &Meshstac
     }
 
     let image_name = format!("meshstack/{}:latest", service_name);
-    let output = Command::new("docker")
-        .arg("build")
-        .arg("-t")
-        .arg(&image_name)
-        .arg(&service_path)
-        .output()?;
+    let mut command = Command::new("docker");
+    command.arg("build").arg("-t").arg(&image_name).arg(&service_path);
 
-    if output.status.success() {
-        println!("Successfully built Docker image: {}\n{}", image_name, String::from_utf8_lossy(&output.stdout));
-    } else {
-        anyhow::bail!("Failed to build Docker image for {}:\n{}\n{}",
-            service_name,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr));
+    // Check if we are in a test environment and should dry run docker execution
+    if std::env::var("MESHSTACK_TEST_DRY_RUN_DOCKER").is_ok() {
+        let command_str = format!("docker {}", command.get_args().map(|s| s.to_str().unwrap()).collect::<Vec<&str>>().join(" "));
+        println!("DRY RUN: Would execute docker command: {}", command_str);
+        return Ok(());
     }
+
+    let stdout = run_command(command, "docker build")?;
+    println!("Successfully built Docker image: {}\n{}", image_name, stdout);
     Ok(())
 }
 
 fn push_docker_image(service_name: &str) -> anyhow::Result<()> {
     println!("Pushing Docker image for {} to registry...", service_name);
     let image_name = format!("meshstack/{}:latest", service_name);
-    let output = Command::new("docker")
-        .arg("push")
-        .arg(&image_name)
-        .output()?;
+    let mut command = Command::new("docker");
+    command.arg("push").arg(&image_name);
 
-    if output.status.success() {
-        println!("Successfully pushed Docker image: {}\n{}", image_name, String::from_utf8_lossy(&output.stdout));
-    } else {
-        anyhow::bail!("Failed to push Docker image for {}:\n{}\n{}",
-            service_name,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr));
+    // Check if we are in a test environment and should dry run docker execution
+    if std::env::var("MESHSTACK_TEST_DRY_RUN_DOCKER").is_ok() {
+        let command_str = format!("docker {}", command.get_args().map(|s| s.to_str().unwrap()).collect::<Vec<&str>>().join(" "));
+        println!("DRY RUN: Would execute docker command: {}", command_str);
+        return Ok(());
     }
+
+    let stdout = run_command(command, "docker push")?;
+    println!("Successfully pushed Docker image: {}\n{}", image_name, stdout);
     Ok(())
 }
 
@@ -439,28 +553,36 @@ fn validate_config() -> Result<()> {
 
 fn validate_cluster() -> Result<()> {
     println!("Checking Kubernetes cluster connectivity...");
-    let output = Command::new("kubectl")
-        .arg("cluster-info")
-        .arg("--context")
-        .arg("current-context") // This will use the current context
-        .output()?;
+    let mut command = Command::new("kubectl");
+    command.arg("cluster-info").arg("--context").arg("current-context");
 
-    if output.status.success() {
-        println!("Connected to Kubernetes cluster successfully.");
-    } else {
-        anyhow::bail!("Failed to connect to Kubernetes cluster: {}\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr));
+    // Check if we are in a test environment and should dry run kubectl execution
+    if std::env::var("MESHSTACK_TEST_DRY_RUN_KUBECTL").is_ok() {
+        let command_str = format!("kubectl {}", command.get_args().map(|s| s.to_str().unwrap()).collect::<Vec<&str>>().join(" "));
+        println!("DRY RUN: Would execute kubectl command: {}", command_str);
+        return Ok(());
     }
+
+    let stdout = run_command(command, "kubectl cluster-info")?;
+    println!("Connected to Kubernetes cluster successfully.\n{}", stdout);
     Ok(())
 }
 
 fn validate_ci() -> Result<()> {
     println!("Validating CI/CD manifests...");
-    // Placeholder for actual CI/CD validation logic
-    // This would involve checking for .github/workflows for GitHub Actions
-    // or ArgoCD application manifests.
-    println!("CI/CD manifests validation (placeholder): No issues found.");
+
+    let github_workflows_path = Path::new(".github").join("workflows");
+
+    if github_workflows_path.exists() && github_workflows_path.is_dir() {
+        println!("GitHub Actions workflows directory found.");
+        // Further validation for GitHub Actions can go here
+    } else {
+        println!("GitHub Actions workflows directory not found. Skipping GitHub Actions validation.");
+    }
+
+    // Placeholder for ArgoCD validation
+    println!("ArgoCD manifests validation (placeholder): No issues found.");
+
     Ok(())
 }
 
@@ -499,7 +621,9 @@ fn install_component(
 
     // Check if helm is installed
     if std::env::var("MESHSTACK_TEST_DRY_RUN_HELM").is_err() {
-        if let Err(_) = Command::new("helm").arg("version").output() {
+        let mut helm_version_cmd = Command::new("helm");
+        helm_version_cmd.arg("version");
+        if run_command(helm_version_cmd, "helm version").is_err() {
             anyhow::bail!("Helm is not installed or not found in PATH. Please install Helm to proceed. Refer to https://helm.sh/docs/intro/install/ for instructions.");
         }
     }
@@ -542,16 +666,8 @@ fn install_component(
             continue; // Continue to the next component in dry run mode
         }
 
-        let output = command.output()?;
-
-        if output.status.success() {
-            println!("Installation of {} successful.", release_name);
-            println!("Stdout:\n{}", String::from_utf8_lossy(&output.stdout));
-        } else {
-            eprintln!("Installation of {} failed.", release_name);
-            eprintln!("Stderr:\n{}", String::from_utf8_lossy(&output.stderr));
-            anyhow::bail!("Helm command failed for {}", release_name);
-        }
+        let stdout = run_command(command, &format!("helm install {}", release_name))?;
+        println!("Installation of {}\nStdout:\n{}", release_name, stdout);
     }
 
     Ok(())

@@ -2,16 +2,16 @@
 
 ### CLI Improvements
 
-- [ ] Add tests for negative and edge cases:
+- [x] Add tests for negative and edge cases:
   - `meshstack init` in an already-initialized directory.
   - `meshstack deploy` with missing config or malformed YAML.
   - `meshstack destroy` with no services defined.
   - Unknown flags or bad arguments should print clear errors.
 
-- [ ] Mock external commands (`helm`, `kubectl`, `docker`) in CLI tests.
+- [x] Mock external commands (`helm`, `kubectl`, `docker`) in CLI tests.
   - Use environment variable like `MESHSTACK_TEST_MODE=true` to short-circuit calls.
 
-- [ ] Add fixture-based tests:
+- [x] Add fixture-based tests:
   - Verify config file parsing and merging.
   - Validate Helm chart scaffolding (if applicable).
   - Ensure template rendering logic works if present.

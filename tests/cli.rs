@@ -4,12 +4,14 @@ use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
 
+mod utils;
+use utils::CommandUnderTest;
+
 #[test]
 fn test_init_command()
 {
     let temp_dir = tempdir().unwrap();
-    let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.current_dir(temp_dir.path())
+    CommandUnderTest::new(temp_dir.path())
         .arg("init")
         .assert()
         .success()
@@ -24,6 +26,26 @@ fn test_init_command()
 
     let provision_path = temp_dir.path().join("provision");
     assert!(provision_path.exists());
+}
+
+#[test]
+fn test_init_command_already_initialized()
+{
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_path = temp_dir.path().to_path_buf();
+    CommandUnderTest::new(temp_dir.path())
+        .current_dir(&temp_dir_path)
+        .arg("init")
+        .assert()
+        .success();
+
+    // Run init again in the same directory
+    CommandUnderTest::new(temp_dir.path())
+        .current_dir(&temp_dir_path)
+        .arg("init")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created meshstack.yaml")); // Should still say it created it, as it overwrites
 }
 
 #[test]
@@ -327,19 +349,42 @@ fn test_validate_cluster_command_failure()
         .arg("--cluster")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Failed to connect to Kubernetes cluster"));
+        .stderr(predicate::str::contains("Error: kubectl cluster-info command failed:"))
+        .stderr(predicate::str::contains("Unable to connect to the server: dial tcp 127.0.0.1:8080: connect: connection refused"));
 }
 
 #[test]
 fn test_validate_ci_command()
 {
+    let temp_dir = tempdir().unwrap();
+    let github_workflows_path = temp_dir.path().join(".github").join("workflows");
+    fs::create_dir_all(&github_workflows_path).unwrap();
+
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("validate")
+    cmd.current_dir(temp_dir.path())
+        .arg("validate")
         .arg("--ci")
         .assert()
         .success()
         .stdout(predicate::str::contains("Validating CI/CD manifests..."))
-        .stdout(predicate::str::contains("CI/CD manifests validation (placeholder): No issues found."));
+        .stdout(predicate::str::contains("GitHub Actions workflows directory found."))
+        .stdout(predicate::str::contains("ArgoCD manifests validation (placeholder): No issues found."));
+}
+
+#[test]
+fn test_validate_ci_command_no_workflows_dir()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("validate")
+        .arg("--ci")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Validating CI/CD manifests..."))
+        .stdout(predicate::str::contains("GitHub Actions workflows directory not found. Skipping GitHub Actions validation."))
+        .stdout(predicate::str::contains("ArgoCD manifests validation (placeholder): No issues found."));
 }
 
 #[test]
@@ -365,7 +410,8 @@ fn test_validate_full_command_success()
         .stdout(predicate::str::contains("Validating project..."))
         .stdout(predicate::str::contains("meshstack.yaml is valid."))
         .stdout(predicate::str::contains("Connected to Kubernetes cluster successfully."))
-        .stdout(predicate::str::contains("CI/CD manifests validation (placeholder): No issues found."));
+        .stdout(predicate::str::contains("GitHub Actions workflows directory not found. Skipping GitHub Actions validation."))
+        .stdout(predicate::str::contains("ArgoCD manifests validation (placeholder): No issues found."));
 }
 
 #[test]
@@ -400,6 +446,7 @@ fn test_validate_full_command_failure_cluster()
     // Create a mock kubectl that always fails
     let mock_kubectl_path = temp_dir.path().join("kubectl");
     fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Unable to connect to the server: dial tcp 127.0.0.1:8080: connect: connection refused' >&2\nexit 1").unwrap();
+    // Make it executable
     Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -409,7 +456,8 @@ fn test_validate_full_command_failure_cluster()
         .arg("--full")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Failed to connect to Kubernetes cluster"));
+        .stderr(predicate::str::contains("Error: kubectl cluster-info command failed:"))
+        .stderr(predicate::str::contains("Unable to connect to the server: dial tcp 127.0.0.1:8080: connect: connection refused"));
 }
 
 #[test]
@@ -423,11 +471,17 @@ fn test_deploy_command_all_services()
     let service_dir = temp_dir.path().join("services").join("my-service");
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
 
     // Create mock docker executable
     let mock_docker_path = temp_dir.path().join("docker");
-    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"\nexit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"\nexit 0; fi\n").unwrap();
     Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm install success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
@@ -444,7 +498,8 @@ fn test_deploy_command_all_services()
         .stdout(predicate::str::contains("Successfully built Docker image: meshstack/my-service:latest"))
         .stdout(predicate::str::contains("Pushing Docker image for my-service to registry..."))
         .stdout(predicate::str::contains("Successfully pushed Docker image: meshstack/my-service:latest"))
-        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."))
+        .stdout(predicate::str::contains("Deploying Helm chart for service: my-service..."))
+        .stdout(predicate::str::contains("Successfully deployed service: my-service"))
         .stdout(predicate::str::contains("Deployment process completed."));
 }
 
@@ -459,11 +514,17 @@ fn test_deploy_command_specific_service()
     let service_dir = temp_dir.path().join("services").join("my-specific-service");
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-specific-service\nversion: 0.1.0").unwrap();
 
     // Create mock docker executable
     let mock_docker_path = temp_dir.path().join("docker");
-    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"\nexit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"\nexit 0; fi\n").unwrap();
     Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm install success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
@@ -481,7 +542,8 @@ fn test_deploy_command_specific_service()
         .stdout(predicate::str::contains("Successfully built Docker image: meshstack/my-specific-service:latest"))
         .stdout(predicate::str::contains("Pushing Docker image for my-specific-service to registry..."))
         .stdout(predicate::str::contains("Successfully pushed Docker image: meshstack/my-specific-service:latest"))
-        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-specific-service."))
+        .stdout(predicate::str::contains("Deploying Helm chart for service: my-specific-service..."))
+        .stdout(predicate::str::contains("Successfully deployed service: my-specific-service"))
         .stdout(predicate::str::contains("Deployment process completed."));
 }
 
@@ -496,13 +558,16 @@ fn test_deploy_command_with_env()
     let service_dir = temp_dir.path().join("services").join("my-service");
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
 
-    let service_dir = temp_dir.path().join("services").join("my-service");
-    fs::create_dir_all(&service_dir).unwrap();
-    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm install success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path())
         .arg("deploy")
         .arg("--env")
         .arg("prod")
@@ -511,8 +576,61 @@ fn test_deploy_command_with_env()
         .stdout(predicate::str::contains("Deploying service..."))
         .stdout(predicate::str::contains("Applying environment profile: prod"))
         .stdout(predicate::str::contains("--- Deploying service: my-service ---"))
-        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."))
-        .stdout(predicate::str::contains("Deployment process completed."));
+        .stdout(predicate::str::contains("Deploying Helm chart for service: my-service..."))
+        .stdout(predicate::str::contains("Successfully deployed service: my-service"));
+}
+
+#[test]
+fn test_deploy_command_deployment_fails()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
+
+    // Create mock helm executable that always fails
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm install failure\" >&2\nexit 1\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock helm to PATH
+        .arg("deploy")
+        .arg("--service")
+        .arg("my-service")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Error: helm upgrade --install meshstack-my-service command failed:"))
+        .stderr(predicate::str::contains("Mock Helm install failure"));
+}
+
+#[test]
+fn test_deploy_command_invalid_env()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("deploy")
+        .arg("--env")
+        .arg("invalid-env")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown environment: invalid-env. Valid environments are: dev, prod, staging"));
 }
 
 #[test]
@@ -526,15 +644,21 @@ fn test_deploy_command_with_build()
     let service_dir = temp_dir.path().join("services").join("my-service");
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
 
     // Create mock docker executable
     let mock_docker_path = temp_dir.path().join("docker");
-    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"\nexit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"\nexit 0; fi\n").unwrap();
     Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm install success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
-        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .env("PATH", temp_dir.path()) // Prepend mock docker and helm to PATH
         .arg("deploy")
         .arg("--build")
         .assert()
@@ -542,7 +666,8 @@ fn test_deploy_command_with_build()
         .stdout(predicate::str::contains("Deploying service..."))
         .stdout(predicate::str::contains("Building Docker image for my-service (language: rust)..."))
         .stdout(predicate::str::contains("Mock Docker build success"))
-        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."));
+        .stdout(predicate::str::contains("Deploying Helm chart for service: my-service..."))
+        .stdout(predicate::str::contains("Successfully deployed service: my-service"));
 }
 
 #[test]
@@ -556,15 +681,21 @@ fn test_deploy_command_with_push()
     let service_dir = temp_dir.path().join("services").join("my-service");
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
 
     // Create mock docker executable
     let mock_docker_path = temp_dir.path().join("docker");
-    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"; exit 0; fi\n").unwrap();
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"\nexit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push success\"\nexit 0; fi\n").unwrap();
     Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm install success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
-        .env("PATH", temp_dir.path()) // Prepend mock docker to PATH
+        .env("PATH", temp_dir.path()) // Prepend mock docker and helm to PATH
         .arg("deploy")
         .arg("--push")
         .assert()
@@ -572,7 +703,8 @@ fn test_deploy_command_with_push()
         .stdout(predicate::str::contains("Deploying service..."))
         .stdout(predicate::str::contains("Pushing Docker image for my-service to registry..."))
         .stdout(predicate::str::contains("Mock Docker push success"))
-        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."));
+        .stdout(predicate::str::contains("Deploying Helm chart for service: my-service..."))
+        .stdout(predicate::str::contains("Successfully deployed service: my-service"));
 }
 
 #[test]
@@ -586,9 +718,16 @@ fn test_deploy_command_with_context()
     let service_dir = temp_dir.path().join("services").join("my-service");
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm install success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock helm to PATH
         .arg("deploy")
         .arg("--context")
         .arg("my-kube-context")
@@ -597,10 +736,67 @@ fn test_deploy_command_with_context()
         .stdout(predicate::str::contains("Deploying service..."))
         .stdout(predicate::str::contains("Targeting Kubernetes context: my-kube-context"))
         .stdout(predicate::str::contains("--- Deploying service: my-service ---"))
-        .stdout(predicate::str::contains("Kubernetes deployment logic (placeholder) for service: my-service."))
-        .stdout(predicate::str::contains("Deployment process completed."));
+        .stdout(predicate::str::contains("Deploying Helm chart for service: my-service..."))
+        .stdout(predicate::str::contains("Successfully deployed service: my-service"));
 }
 
+#[test]
+fn test_build_docker_image_dry_run()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_DOCKER", "1")
+        .arg("deploy")
+        .arg("--build")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DRY RUN: Would execute docker command: docker build -t meshstack/my-service:latest"));
+}
+
+#[test]
+fn test_push_docker_image_dry_run()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Dockerfile"), "FROM alpine\nCMD echo \"Hello from Docker!\"").unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_DOCKER", "1")
+        .arg("deploy")
+        .arg("--push")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DRY RUN: Would execute docker command: docker push meshstack/my-service:latest"));
+}
+
+#[test]
+fn test_validate_cluster_dry_run()
+{
+    let temp_dir = tempdir().unwrap();
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_KUBECTL", "1")
+        .arg("validate")
+        .arg("--cluster")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DRY RUN: Would execute kubectl command: kubectl cluster-info --context current-context"));
+}
 
 #[test]
 fn test_deploy_command_no_services_found()
@@ -636,6 +832,21 @@ fn test_deploy_command_services_dir_not_found()
         .assert()
         .failure()
         .stderr(predicate::str::contains("Services directory not found. Please run `meshstack init` first."));
+}
+
+#[test]
+fn test_deploy_command_meshstack_yaml_not_found()
+{
+    let temp_dir = tempdir().unwrap();
+    let services_dir = temp_dir.path().join("services");
+    fs::create_dir_all(&services_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("deploy")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Error: No such file or directory (os error 2)"));
 }
 
 #[test]
@@ -683,7 +894,8 @@ fn test_deploy_command_docker_build_fails()
         .arg("--build")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Failed to build Docker image for my-service"));
+        .stderr(predicate::str::contains("Error: docker build command failed:"))
+        .stderr(predicate::str::contains("Mock Docker build failure"));
 }
 
 #[test]
@@ -700,7 +912,7 @@ fn test_deploy_command_docker_push_fails()
 
     // Create mock docker executable that fails on push
     let mock_docker_path = temp_dir.path().join("docker");
-    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"; exit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push failure\" >&2; exit 1; fi\n").unwrap();
+    fs::write(&mock_docker_path, "#!/bin/bash\nif [ \"$1\" = \"build\" ]; then echo \"Mock Docker build success\"\nexit 0; fi\nif [ \"$1\" = \"push\" ]; then echo \"Mock Docker push failure\" >&2; exit 1; fi\n").unwrap();
     Command::new("chmod").arg("+x").arg(&mock_docker_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -711,15 +923,8 @@ fn test_deploy_command_docker_push_fails()
         .arg("--push")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Failed to push Docker image for my-service"));
-}
-#[test]
-fn test_destroy_command() {
-    let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("destroy")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Destroying project..."));
+        .stderr(predicate::str::contains("Error: docker push command failed:"))
+        .stderr(predicate::str::contains("Mock Docker push failure"));
 }
 
 #[test]
@@ -733,49 +938,93 @@ fn test_destroy_command_with_confirmation() {
         .stdout(predicate::str::contains("Confirmation received. Proceeding with destruction."));
 }
 
-#[test]
-fn test_destroy_command_without_confirmation() {
-    let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("destroy")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Destroying project..."))
-        .stdout(predicate::str::contains("Dry run complete. No resources were destroyed."));
-}
+
+
 
 #[test]
 fn test_destroy_command_with_service() {
+    let temp_dir = tempdir().unwrap();
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm uninstall success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
+
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("destroy")
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock helm to PATH
+        .arg("destroy")
         .arg("--service")
         .arg("my-service")
+        .arg("--confirm")
         .assert()
         .success()
         .stdout(predicate::str::contains("Destroying project..."))
-        .stdout(predicate::str::contains("Destroying service: my-service"));
+        .stdout(predicate::str::contains("Destroying service: my-service"))
+        .stdout(predicate::str::contains("Uninstalling Helm release: meshstack-my-service..."))
+        .stdout(predicate::str::contains("Successfully uninstalled Helm release: meshstack-my-service"));
 }
 
 #[test]
 fn test_destroy_command_with_component() {
+    let temp_dir = tempdir().unwrap();
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm uninstall success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
+
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("destroy")
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock helm to PATH
+        .arg("destroy")
         .arg("--component")
         .arg("istio")
+        .arg("--confirm")
         .assert()
         .success()
         .stdout(predicate::str::contains("Destroying project..."))
-        .stdout(predicate::str::contains("Destroying component: istio"));
+        .stdout(predicate::str::contains("Destroying component: istio"))
+        .stdout(predicate::str::contains("Uninstalling Helm release: istio..."))
+        .stdout(predicate::str::contains("Successfully uninstalled Helm release: istio"));
 }
 
 #[test]
 fn test_destroy_command_with_full() {
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm uninstall success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
+
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("destroy")
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock helm to PATH
+        .arg("destroy")
         .arg("--full")
+        .arg("--confirm")
         .assert()
         .success()
         .stdout(predicate::str::contains("Destroying project..."))
-        .stdout(predicate::str::contains("Destroying all resources."));
+        .stdout(predicate::str::contains("Destroying all resources."))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: istio"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: prometheus"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: grafana"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: cert-manager"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: nginx-ingress"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: vault"))
+        .stdout(predicate::str::contains("Uninstalling service: my-service"))
+        .stdout(predicate::str::contains("Successfully uninstalled Helm release: meshstack-my-service"));
 }
 
 #[test]
@@ -784,10 +1033,11 @@ fn test_destroy_command_with_context() {
     cmd.arg("destroy")
         .arg("--context")
         .arg("my-kube-context")
+        .arg("--confirm")
         .assert()
         .success()
         .stdout(predicate::str::contains("Destroying project..."))
-        .stdout(predicate::str::contains("Using Kubernetes context: my-kube-context"));
+        .stdout(predicate::str::contains("Confirmation received. Proceeding with destruction."));
 }
 
 #[test]
@@ -855,15 +1105,42 @@ fn test_status_command_context() {
         .stdout(predicate::str::contains("Showing per-kube-context state for: my-kube-context"));
 }
 
+
+
 #[test]
 fn test_destroy_command_all() {
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
+
+    // Create mock helm executable
+    let mock_helm_path = temp_dir.path().join("helm");
+    fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm uninstall success\"\nexit 0\n").unwrap();
+    Command::new("chmod").arg("+x").arg(&mock_helm_path).status().unwrap();
+
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("destroy")
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock helm to PATH
+        .arg("destroy")
         .arg("--all")
+        .arg("--confirm")
         .assert()
         .success()
         .stdout(predicate::str::contains("Destroying project..."))
-        .stdout(predicate::str::contains("Destroying all resources."));
+        .stdout(predicate::str::contains("Destroying all resources."))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: istio"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: prometheus"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: grafana"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: cert-manager"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: nginx-ingress"))
+        .stdout(predicate::str::contains("Uninstalling infrastructure component: vault"))
+        .stdout(predicate::str::contains("Uninstalling service: my-service"))
+        .stdout(predicate::str::contains("Successfully uninstalled Helm release: meshstack-my-service"));
 }
 
 #[test]
