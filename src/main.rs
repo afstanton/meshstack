@@ -209,9 +209,6 @@ fn main() -> Result<()> {
             let template_dest_path = Path::new("."); // Copy to current directory
             copy_dir_all(&template_source_path, template_dest_path)?;
             println!("Copied base templates.");
-
-            // Copy language-specific templates
-            copy_template_for_language(&config_to_write.language)?;
         }
         Commands::Install { component, profile, dry_run, context } => {
             install_component(component, profile, *dry_run, context)?;
@@ -773,17 +770,4 @@ fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn copy_template_for_language(language: &str) -> anyhow::Result<()> {
-    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let template_source_path = project_root.join("templates").join(language);
-    let template_dest_path = Path::new(".");
-
-    if template_source_path.exists() {
-        println!("Copying {} templates...", language);
-        copy_dir_all(&template_source_path, template_dest_path)?;
-        println!("Copied {} templates.", language);
-    } else {
-        println!("No {} templates found at {:?}. Skipping.", language, template_source_path);
-    }
-    Ok(())
-}
+// Removed copy_template_for_language function
