@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Parser)]
@@ -202,6 +202,16 @@ fn main() -> Result<()> {
                     println!("Created directory: {}", dir);
                 }
             }
+
+            // Copy base templates
+            let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let template_source_path = project_root.join("templates").join("base");
+            let template_dest_path = Path::new("."); // Copy to current directory
+            copy_dir_all(&template_source_path, template_dest_path)?;
+            println!("Copied base templates.");
+
+            // Copy language-specific templates
+            copy_template_for_language(&config_to_write.language)?;
         }
         Commands::Install { component, profile, dry_run, context } => {
             install_component(component, profile, *dry_run, context)?;
@@ -249,20 +259,62 @@ fn status_project(
 ) -> anyhow::Result<()> {
     println!("Showing project status...");
 
+    let config_content = fs::read_to_string("meshstack.yaml");
+    let config: Option<MeshstackConfig> = match config_content {
+        Ok(content) => serde_yaml::from_str(&content).ok(),
+        Err(_) => None,
+    };
+
     if components {
-        println!("Showing installed infrastructure and versions...");
+        println!("\n--- Installed Infrastructure Components ---");
+        if let Some(c) = &config {
+            println!("Service Mesh: {}", c.service_mesh);
+            // In a real scenario, you'd query Kubernetes or other tools for actual installed components
+            println!("Other components (placeholder): Prometheus, Grafana, Cert-Manager");
+        } else {
+            println!("No meshstack.yaml found. Cannot determine installed components.");
+        }
     }
 
     if services {
-        println!("Showing running app services...");
+        println!("\n--- Running App Services ---");
+        let services_dir = Path::new("services");
+        if services_dir.exists() && services_dir.is_dir() {
+            let mut service_found = false;
+            for entry in fs::read_dir(services_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(svc_name) = path.file_name().and_then(|n| n.to_str()) {
+                        println!("Service: {} (Status: Running - placeholder)", svc_name);
+                        service_found = true;
+                    }
+                }
+            }
+            if !service_found {
+                println!("No services found in the 'services/' directory.");
+            }
+        } else {
+            println!("'services/' directory not found.");
+        }
     }
 
     if lockfile {
-        println!("Comparing current state with meshstack.lock...");
+        println!("\n--- meshstack.lock Status ---");
+        let lockfile_path = Path::new("meshstack.lock");
+        if lockfile_path.exists() {
+            let lock_content = fs::read_to_string(lockfile_path)?;
+            println!("Content of meshstack.lock:\n{}", lock_content);
+        } else {
+            println!("meshstack.lock not found.");
+        }
     }
 
-    if let Some(context) = context {
-        println!("Showing per-kube-context state for: {}", context);
+    if let Some(ctx) = context {
+        println!("\n--- Kubernetes Context Status ---");
+        println!("Targeting Kubernetes context: {}", ctx);
+        // In a real scenario, you'd run kubectl commands to get context status
+        println!("Kubernetes context status (placeholder): Connected");
     }
 
     Ok(())
@@ -482,8 +534,8 @@ fn uninstall_helm_release(release_name: &str, context: &Option<String>) -> anyho
     Ok(())
 }
 
-fn build_docker_image(service_path: &Path, service_name: &str, config: &MeshstackConfig) -> anyhow::Result<()> {
-    println!("Building Docker image for {} (language: {})...", service_name, config.language);
+fn build_docker_image(service_path: &Path, service_name: &str, _config: &MeshstackConfig) -> anyhow::Result<()> {
+    println!("Building Docker image for {} (language: {})...", service_name, _config.language);
     let dockerfile_path = service_path.join("Dockerfile");
     if !dockerfile_path.exists() {
         anyhow::bail!("Dockerfile not found in {}.", service_path.display());
@@ -523,7 +575,7 @@ fn push_docker_image(service_name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn validate_project(config: bool, cluster: bool, ci: bool, full: bool) -> Result<()> {
+fn validate_project(config: bool, cluster: bool, ci: bool, full: bool) -> anyhow::Result<()> {
     println!("Validating project...");
 
     if full || config {
@@ -539,7 +591,7 @@ fn validate_project(config: bool, cluster: bool, ci: bool, full: bool) -> Result
     Ok(())
 }
 
-fn validate_config() -> Result<()> {
+fn validate_config() -> anyhow::Result<()> {
     println!("Validating meshstack.yaml...");
     let config_path = "meshstack.yaml";
     if !Path::new(config_path).exists() {
@@ -551,7 +603,7 @@ fn validate_config() -> Result<()> {
     Ok(())
 }
 
-fn validate_cluster() -> Result<()> {
+fn validate_cluster() -> anyhow::Result<()> {
     println!("Checking Kubernetes cluster connectivity...");
     let mut command = Command::new("kubectl");
     command.arg("cluster-info").arg("--context").arg("current-context");
@@ -568,7 +620,7 @@ fn validate_cluster() -> Result<()> {
     Ok(())
 }
 
-fn validate_ci() -> Result<()> {
+fn validate_ci() -> anyhow::Result<()> {
     println!("Validating CI/CD manifests...");
 
     let github_workflows_path = Path::new(".github").join("workflows");
@@ -666,8 +718,8 @@ fn install_component(
             continue; // Continue to the next component in dry run mode
         }
 
-        let stdout = run_command(command, &format!("helm install {}", release_name))?;
-        println!("Installation of {}\nStdout:\n{}", release_name, stdout);
+        let stdout = run_command(command, &format!("helm upgrade --install {}", release_name))?;
+        println!("Successfully deployed service: {}\n{}", release_name, stdout);
     }
 
     Ok(())
@@ -702,5 +754,36 @@ fn update_project(
         println!("Updating infra charts...");
     }
 
+    Ok(())
+}
+
+// Helper function to copy a directory recursively
+fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            fs::copy(entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_template_for_language(language: &str) -> anyhow::Result<()> {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let template_source_path = project_root.join("templates").join(language);
+    let template_dest_path = Path::new(".");
+
+    if template_source_path.exists() {
+        println!("Copying {} templates...", language);
+        copy_dir_all(&template_source_path, template_dest_path)?;
+        println!("Copied {} templates.", language);
+    } else {
+        println!("No {} templates found at {:?}. Skipping.", language, template_source_path);
+    }
     Ok(())
 }

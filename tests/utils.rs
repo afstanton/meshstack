@@ -1,7 +1,7 @@
 use assert_cmd::prelude::*;
-use predicates::prelude::*;
 use std::process::Command;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::fs;
 
 pub struct CommandUnderTest<'a> {
     cmd: Command,
@@ -12,6 +12,18 @@ impl<'a> CommandUnderTest<'a> {
     pub fn new(temp_dir_path: &'a Path) -> Self {
         let mut cmd = Command::cargo_bin("meshstack").unwrap();
         cmd.current_dir(temp_dir_path);
+
+        // Copy templates directory to the temporary test directory
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let templates_src = project_root.join("templates");
+        let templates_dest = temp_dir_path.join("templates");
+
+        if templates_src.exists() {
+            copy_dir_all(&templates_src, &templates_dest).expect("Failed to copy templates directory");
+        } else {
+            panic!("Templates source directory does not exist: {:?}", templates_src);
+        }
+
         CommandUnderTest { cmd, temp_dir_path }
     }
 
@@ -40,15 +52,18 @@ impl<'a> CommandUnderTest<'a> {
     }
 }
 
-#[macro_export]
-macro_rules! assert_meshstack_command {
-    ($temp_dir:expr, $command:expr) => {
-        CommandUnderTest::new($temp_dir.path())
-            .args($command.split_whitespace())
-    };
-    ($temp_dir:expr, $command:expr, $($arg:expr),*) => {
-        CommandUnderTest::new($temp_dir.path())
-            .args($command.split_whitespace())
-            $(.arg($arg))*
-    };
+// Helper function to copy a directory recursively
+fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            fs::copy(entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
 }
