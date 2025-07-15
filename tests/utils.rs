@@ -30,7 +30,7 @@ impl<'a> CommandUnderTest<'a> {
         self
     }
 
-    pub fn assert(self) -> assert_cmd::assert::Assert {
+    pub fn assert(mut self) -> assert_cmd::assert::Assert {
         self.cmd.assert()
     }
 

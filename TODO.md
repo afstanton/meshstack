@@ -2,7 +2,7 @@
 
 ### CLI Improvements
 
-- [x] Add tests for negative and edge cases:
+- [x] Add tests for negative and edge cases (covered for `init`, `install`, `validate`, `deploy`, `destroy`):
   - `meshstack init` in an already-initialized directory.
   - `meshstack deploy` with missing config or malformed YAML.
   - `meshstack destroy` with no services defined.

@@ -10,7 +10,7 @@ use utils::CommandUnderTest;
 #[test]
 fn test_init_command()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     CommandUnderTest::new(temp_dir.path())
         .arg("init")
         .assert()
@@ -31,7 +31,7 @@ fn test_init_command()
 #[test]
 fn test_init_command_already_initialized()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let temp_dir_path = temp_dir.path().to_path_buf();
     CommandUnderTest::new(temp_dir.path())
         .current_dir(&temp_dir_path)
@@ -51,7 +51,7 @@ fn test_init_command_already_initialized()
 #[test]
 fn test_init_command_with_config_file()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let config_path = temp_dir.path().join("test_config.yaml");
     let config_content = "project_name: my-test-app\nlanguage: go\nservice_mesh: linkerd\nci_cd: argo";
     fs::write(&config_path, config_content).unwrap();
@@ -76,7 +76,7 @@ fn test_init_command_with_config_file()
 #[test]
 fn test_init_command_with_name()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
         .arg("init")
@@ -97,7 +97,7 @@ fn test_init_command_with_name()
 #[test]
 fn test_init_command_with_language()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
         .arg("init")
@@ -118,7 +118,7 @@ fn test_init_command_with_language()
 #[test]
 fn test_init_command_with_mesh()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
         .arg("init")
@@ -266,7 +266,7 @@ fn test_install_command_with_custom_profile()
 #[test]
 fn test_validate_config_command_success()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -285,7 +285,7 @@ fn test_validate_config_command_success()
 #[test]
 fn test_validate_config_command_file_not_found()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
         .arg("validate")
@@ -298,7 +298,7 @@ fn test_validate_config_command_file_not_found()
 #[test]
 fn test_validate_config_command_invalid_yaml()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github: invalid_line"; // Invalid YAML
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -315,7 +315,7 @@ fn test_validate_config_command_invalid_yaml()
 #[test]
 fn test_validate_cluster_command_success()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     // Create a mock kubectl that always succeeds
     let mock_kubectl_path = temp_dir.path().join("kubectl");
     fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Kubernetes master is running at https://127.0.0.1:8080'\nexit 0").unwrap();
@@ -323,7 +323,8 @@ fn test_validate_cluster_command_success()
     Command::new("chmod").arg("+x").arg(&mock_kubectl_path).status().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", temp_dir.path()) // Prepend mock kubectl to PATH
         .arg("validate")
         .arg("--cluster")
         .assert()
@@ -335,7 +336,7 @@ fn test_validate_cluster_command_success()
 #[test]
 fn test_validate_cluster_command_failure()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     // Create a mock kubectl that always fails
     let mock_kubectl_path = temp_dir.path().join("kubectl");
     fs::write(&mock_kubectl_path, "#!/bin/bash\necho 'Unable to connect to the server: dial tcp 127.0.0.1:8080: connect: connection refused' >&2\nexit 1").unwrap();
@@ -356,7 +357,7 @@ fn test_validate_cluster_command_failure()
 #[test]
 fn test_validate_ci_command()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let github_workflows_path = temp_dir.path().join(".github").join("workflows");
     fs::create_dir_all(&github_workflows_path).unwrap();
 
@@ -374,7 +375,7 @@ fn test_validate_ci_command()
 #[test]
 fn test_validate_ci_command_no_workflows_dir()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
@@ -390,7 +391,7 @@ fn test_validate_ci_command_no_workflows_dir()
 #[test]
 fn test_validate_full_command_success()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -417,7 +418,7 @@ fn test_validate_full_command_success()
 #[test]
 fn test_validate_full_command_failure_config()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     // No meshstack.yaml to simulate config validation failure
 
     // Create a mock kubectl that always succeeds
@@ -438,7 +439,7 @@ fn test_validate_full_command_failure_config()
 #[test]
 fn test_validate_full_command_failure_cluster()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -463,7 +464,7 @@ fn test_validate_full_command_failure_cluster()
 #[test]
 fn test_deploy_command_all_services()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -506,7 +507,7 @@ fn test_deploy_command_all_services()
 #[test]
 fn test_deploy_command_specific_service()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -550,7 +551,7 @@ fn test_deploy_command_specific_service()
 #[test]
 fn test_deploy_command_with_env()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -583,7 +584,7 @@ fn test_deploy_command_with_env()
 #[test]
 fn test_deploy_command_deployment_fails()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -613,7 +614,7 @@ fn test_deploy_command_deployment_fails()
 #[test]
 fn test_deploy_command_invalid_env()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -636,7 +637,7 @@ fn test_deploy_command_invalid_env()
 #[test]
 fn test_deploy_command_with_build()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -673,7 +674,7 @@ fn test_deploy_command_with_build()
 #[test]
 fn test_deploy_command_with_push()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -710,7 +711,7 @@ fn test_deploy_command_with_push()
 #[test]
 fn test_deploy_command_with_context()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -743,7 +744,7 @@ fn test_deploy_command_with_context()
 #[test]
 fn test_build_docker_image_dry_run()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -765,7 +766,7 @@ fn test_build_docker_image_dry_run()
 #[test]
 fn test_push_docker_image_dry_run()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -787,7 +788,7 @@ fn test_push_docker_image_dry_run()
 #[test]
 fn test_validate_cluster_dry_run()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
         .env("MESHSTACK_TEST_DRY_RUN_KUBECTL", "1")
@@ -801,7 +802,7 @@ fn test_validate_cluster_dry_run()
 #[test]
 fn test_deploy_command_no_services_found()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -821,7 +822,7 @@ fn test_deploy_command_no_services_found()
 #[test]
 fn test_deploy_command_services_dir_not_found()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -837,7 +838,7 @@ fn test_deploy_command_services_dir_not_found()
 #[test]
 fn test_deploy_command_meshstack_yaml_not_found()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let services_dir = temp_dir.path().join("services");
     fs::create_dir_all(&services_dir).unwrap();
 
@@ -852,7 +853,7 @@ fn test_deploy_command_meshstack_yaml_not_found()
 #[test]
 fn test_deploy_command_dockerfile_not_found()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -873,7 +874,7 @@ fn test_deploy_command_dockerfile_not_found()
 #[test]
 fn test_deploy_command_docker_build_fails()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -901,7 +902,7 @@ fn test_deploy_command_docker_build_fails()
 #[test]
 fn test_deploy_command_docker_push_fails()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -943,7 +944,7 @@ fn test_destroy_command_with_confirmation() {
 
 #[test]
 fn test_destroy_command_with_service() {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let service_dir = temp_dir.path().join("services").join("my-service");
     fs::create_dir_all(&service_dir).unwrap();
     fs::write(service_dir.join("Chart.yaml"), "apiVersion: v2\nname: my-service\nversion: 0.1.0").unwrap();
@@ -970,7 +971,7 @@ fn test_destroy_command_with_service() {
 
 #[test]
 fn test_destroy_command_with_component() {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     // Create mock helm executable
     let mock_helm_path = temp_dir.path().join("helm");
     fs::write(&mock_helm_path, "#!/bin/bash\necho \"Mock Helm uninstall success\"\nexit 0\n").unwrap();
@@ -993,7 +994,7 @@ fn test_destroy_command_with_component() {
 
 #[test]
 fn test_destroy_command_with_full() {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -1109,7 +1110,7 @@ fn test_status_command_context() {
 
 #[test]
 fn test_destroy_command_all() {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
     let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
@@ -1157,7 +1158,7 @@ fn test_update_command_apply() {
 #[test]
 fn test_init_command_with_ci()
 {
-    let temp_dir = tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
     cmd.current_dir(temp_dir.path())
         .arg("init")
@@ -1220,4 +1221,130 @@ fn test_update_command_infra() {
         .success()
         .stdout(predicate::str::contains("Updating project..."))
         .stdout(predicate::str::contains("Updating infra charts..."));
+}
+
+// New tests added below
+
+#[test]
+fn test_update_command_with_component_and_apply() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--component")
+        .arg("istio")
+        .arg("--apply")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Applying all updates automatically..."))
+        .stdout(predicate::str::contains("Updating component: istio"));
+}
+
+#[test]
+fn test_update_command_template_and_apply() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--template")
+        .arg("--apply")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Applying all updates automatically..."))
+        .stdout(predicate::str::contains("Updating project templates..."));
+}
+
+#[test]
+fn test_update_command_infra_and_apply() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--infra")
+        .arg("--apply")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Applying all updates automatically..."))
+        .stdout(predicate::str::contains("Updating infra charts..."));
+}
+
+#[test]
+fn test_update_command_all_flags() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("update")
+        .arg("--check")
+        .arg("--apply")
+        .arg("--component")
+        .arg("istio")
+        .arg("--template")
+        .arg("--infra")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Checking for available updates..."))
+        .stdout(predicate::str::contains("Applying all updates automatically..."))
+        .stdout(predicate::str::contains("Updating component: istio"))
+        .stdout(predicate::str::contains("Updating project templates..."))
+        .stdout(predicate::str::contains("Updating infra charts..."));
+}
+
+#[test]
+fn test_status_command_all_flags() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("status")
+        .arg("--components")
+        .arg("--services")
+        .arg("--lockfile")
+        .arg("--context")
+        .arg("my-kube-context")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Showing project status..."))
+        .stdout(predicate::str::contains("Showing installed infrastructure and versions..."))
+        .stdout(predicate::str::contains("Showing running app services..."))
+        .stdout(predicate::str::contains("Comparing current state with meshstack.lock..."))
+        .stdout(predicate::str::contains("Showing per-kube-context state for: my-kube-context"));
+}
+
+#[test]
+fn test_destroy_command_all_without_confirm() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--all")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Dry run complete. No resources were destroyed. Use --confirm to proceed."));
+}
+
+#[test]
+fn test_destroy_command_service_without_confirm() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--service")
+        .arg("my-service")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Dry run complete. No resources were destroyed. Use --confirm to proceed."));
+}
+
+#[test]
+fn test_destroy_command_component_without_confirm() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--component")
+        .arg("istio")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Dry run complete. No resources were destroyed. Use --confirm to proceed."));
+}
+
+#[test]
+fn test_destroy_command_full_without_confirm() {
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.arg("destroy")
+        .arg("--full")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Destroying project..."))
+        .stdout(predicate::str::contains("Dry run complete. No resources were destroyed. Use --confirm to proceed."));
 }
