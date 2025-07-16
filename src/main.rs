@@ -158,12 +158,61 @@ enum Commands {
     },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct MeshstackConfig {
     project_name: String,
     language: String,
     service_mesh: String,
     ci_cd: String,
+}
+
+/// Common context and configuration for Meshstack operations
+#[derive(Clone)]
+struct MeshstackContext {
+    pub config: Option<MeshstackConfig>,
+    pub kube_context: Option<String>,
+    pub dry_run: bool,
+}
+
+impl MeshstackContext {
+    /// Create a new context with optional Kubernetes context
+    fn new(kube_context: Option<String>) -> Self {
+        Self {
+            config: Self::load_config().ok(),
+            kube_context,
+            dry_run: false,
+        }
+    }
+
+    /// Create a new context with dry run enabled
+    fn new_dry_run(kube_context: Option<String>) -> Self {
+        Self {
+            config: Self::load_config().ok(),
+            kube_context,
+            dry_run: true,
+        }
+    }
+
+    /// Load and parse meshstack.yaml configuration
+    fn load_config() -> Result<MeshstackConfig> {
+        let config_content = fs::read_to_string("meshstack.yaml")?;
+        let config: MeshstackConfig = serde_yaml::from_str(&config_content)?;
+        Ok(config)
+    }
+
+    /// Get the configuration, returning an error if not loaded
+    fn require_config(&self) -> Result<&MeshstackConfig> {
+        self.config.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("meshstack.yaml not found or invalid. Run 'meshstack init' first.")
+        })
+    }
+
+    /// Add Kubernetes context arguments to a command if context is specified
+    fn add_kube_context_args(&self, command: &mut Command) {
+        if let Some(ctx) = &self.kube_context {
+            command.arg("--kube-context").arg(ctx);
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -207,22 +256,32 @@ fn main() -> Result<()> {
             println!("Copied base templates.");
         }
         Commands::Install { component, profile, dry_run, context } => {
-            install_component(component, profile, *dry_run, context)?;
+            let ctx = if *dry_run {
+                MeshstackContext::new_dry_run(context.clone())
+            } else {
+                MeshstackContext::new(context.clone())
+            };
+            install_component(component, profile, &ctx)?;
         }
         Commands::Validate { config, cluster, ci, full } => {
-            validate_project(*config, *cluster, *ci, *full)?;
+            let ctx = MeshstackContext::new(None);
+            validate_project(*config, *cluster, *ci, *full, &ctx)?;
         }
         Commands::Deploy { service, env, build, push, context } => {
-            deploy_service(service, env, *build, *push, context)?;
+            let ctx = MeshstackContext::new(context.clone());
+            deploy_service(service, env, *build, *push, &ctx)?;
         }
         Commands::Destroy { service, component, full, context, confirm, all } => {
-            destroy_project(service, component, *full, context, *confirm, *all)?;
+            let ctx = MeshstackContext::new(context.clone());
+            destroy_project(service, component, *full, &ctx, *confirm, *all)?;
         }
         Commands::Update { check, apply, component, template, infra } => {
-            update_project(*check, *apply, component, *template, *infra)?;
+            let ctx = MeshstackContext::new(None);
+            update_project(*check, *apply, component, *template, *infra, &ctx)?;
         }
         Commands::Status { components, services, lockfile, context } => {
-            status_project(*components, *services, *lockfile, context)?;
+            let ctx = MeshstackContext::new(context.clone());
+            status_project(*components, *services, *lockfile, &ctx)?;
         }
     }
     Ok(())
@@ -248,19 +307,13 @@ fn status_project(
     components: bool,
     services: bool,
     lockfile: bool,
-    context: &Option<String>,
+    ctx: &MeshstackContext,
 ) -> anyhow::Result<()> {
     println!("Showing project status...");
 
-    let config_content = fs::read_to_string("meshstack.yaml");
-    let config: Option<MeshstackConfig> = match config_content {
-        Ok(content) => serde_yaml::from_str(&content).ok(),
-        Err(_) => None,
-    };
-
     if components {
         println!("\n--- Installed Infrastructure Components ---");
-        if let Some(c) = &config {
+        if let Some(c) = &ctx.config {
             println!("Service Mesh: {}", c.service_mesh);
             // In a real scenario, you'd query Kubernetes or other tools for actual installed components
             println!("Other components (placeholder): Prometheus, Grafana, Cert-Manager");
@@ -303,9 +356,9 @@ fn status_project(
         }
     }
 
-    if let Some(ctx) = context {
+    if let Some(kube_ctx) = &ctx.kube_context {
         println!("\n--- Kubernetes Context Status ---");
-        println!("Targeting Kubernetes context: {}", ctx);
+        println!("Targeting Kubernetes context: {}", kube_ctx);
         // In a real scenario, you'd run kubectl commands to get context status
         println!("Kubernetes context status (placeholder): Connected");
     }
@@ -318,7 +371,7 @@ fn deploy_service(
     env: &Option<String>,
     build: bool,
     push: bool,
-    context: &Option<String>,
+    ctx: &MeshstackContext,
 ) -> anyhow::Result<()> {
     println!("Deploying service...");
 
@@ -326,12 +379,11 @@ fn deploy_service(
         println!("Applying environment profile: {}", env);
     }
 
-    if let Some(context) = context {
+    if let Some(context) = &ctx.kube_context {
         println!("Targeting Kubernetes context: {}", context);
     }
 
-    let config_content = fs::read_to_string("meshstack.yaml")?;
-    let config: MeshstackConfig = serde_yaml::from_str(&config_content)?;
+    let config = ctx.require_config()?;
 
     let services_dir = Path::new("services");
     if !services_dir.exists() {
@@ -372,7 +424,7 @@ fn deploy_service(
         if std::env::var("MESHSTACK_TEST_DRY_RUN_HELM").is_err() &&
            std::env::var("MESHSTACK_TEST_DRY_RUN_DOCKER").is_err() &&
            std::env::var("MESHSTACK_TEST_DRY_RUN_KUBECTL").is_err() {
-            deploy_helm_chart(&service_path, &current_service_name, env, context)?;
+            deploy_helm_chart(&service_path, &current_service_name, env, ctx)?;
         }
     }
 
@@ -384,7 +436,7 @@ fn deploy_helm_chart(
     service_path: &Path,
     service_name: &str,
     env: &Option<String>,
-    context: &Option<String>,
+    ctx: &MeshstackContext,
 ) -> anyhow::Result<()> {
     println!("Deploying Helm chart for service: {}...", service_name);
 
@@ -401,10 +453,7 @@ fn deploy_helm_chart(
     command.arg(&release_name);
     command.arg(chart_path);
 
-    if let Some(ctx) = context {
-        command.arg("--kube-context");
-        command.arg(ctx);
-    }
+    ctx.add_kube_context_args(&mut command);
 
     if let Some(e) = env {
         let values_file = match e.as_str() {
@@ -442,7 +491,7 @@ fn destroy_project(
     service: &Option<String>,
     component: &Option<String>,
     full: bool,
-    context: &Option<String>,
+    ctx: &MeshstackContext,
     confirm: bool,
     all: bool,
 ) -> anyhow::Result<()> {
@@ -457,13 +506,13 @@ fn destroy_project(
 
     if let Some(svc) = service {
         println!("Destroying service: {}", svc);
-        uninstall_helm_release(&format!("meshstack-{}", svc), context)?;
+        uninstall_helm_release(&format!("meshstack-{}", svc), ctx)?;
     }
 
     if let Some(comp) = component {
         println!("Destroying component: {}", comp);
         // For now, assume components are also Helm releases. This might need more sophisticated logic later.
-        uninstall_helm_release(comp, context)?;
+        uninstall_helm_release(comp, ctx)?;
     }
 
     if destroy_full {
@@ -472,7 +521,7 @@ fn destroy_project(
         let infra_components = vec!["istio", "prometheus", "grafana", "cert-manager", "nginx-ingress", "vault"];
         for comp in infra_components {
             println!("Uninstalling infrastructure component: {}", comp);
-            uninstall_helm_release(comp, context)?;
+            uninstall_helm_release(comp, ctx)?;
         }
 
         // Discover and uninstall all services
@@ -484,7 +533,7 @@ fn destroy_project(
                 if path.is_dir() {
                     if let Some(svc_name) = path.file_name().and_then(|n| n.to_str()) {
                         println!("Uninstalling service: {}", svc_name);
-                        uninstall_helm_release(&format!("meshstack-{}", svc_name), context)?;
+                        uninstall_helm_release(&format!("meshstack-{}", svc_name), ctx)?;
                     }
                 }
             }
@@ -502,17 +551,14 @@ fn destroy_project(
     Ok(())
 }
 
-fn uninstall_helm_release(release_name: &str, context: &Option<String>) -> anyhow::Result<()> {
+fn uninstall_helm_release(release_name: &str, ctx: &MeshstackContext) -> anyhow::Result<()> {
     println!("Uninstalling Helm release: {}...", release_name);
 
     let mut command = Command::new("helm");
     command.arg("uninstall");
     command.arg(release_name);
 
-    if let Some(ctx) = context {
-        command.arg("--kube-context");
-        command.arg(ctx);
-    }
+    ctx.add_kube_context_args(&mut command);
 
     // Check if we are in a test environment and should dry run helm execution
     if std::env::var("MESHSTACK_TEST_DRY_RUN_HELM").is_ok() {
@@ -568,7 +614,7 @@ fn push_docker_image(service_name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn validate_project(config: bool, cluster: bool, ci: bool, full: bool) -> anyhow::Result<()> {
+fn validate_project(config: bool, cluster: bool, ci: bool, full: bool, _ctx: &MeshstackContext) -> anyhow::Result<()> {
     println!("Validating project...");
 
     if full || config {
@@ -634,8 +680,7 @@ fn validate_ci() -> anyhow::Result<()> {
 fn install_component(
     component: &Option<String>,
     profile: &Option<String>,
-    dry_run: bool,
-    context: &Option<String>,
+    ctx: &MeshstackContext,
 ) -> anyhow::Result<()> {
     println!("Installing components...");
 
@@ -681,14 +726,11 @@ fn install_component(
         command.arg(&release_name);
         command.arg(&chart_name);
 
-        if dry_run {
+        if ctx.dry_run {
             command.arg("--dry-run");
         }
 
-        if let Some(ctx) = context {
-            command.arg("--kube-context");
-            command.arg(ctx);
-        }
+        ctx.add_kube_context_args(&mut command);
 
         if let Some(p) = profile {
             let values_file = match p.as_str() {
@@ -724,6 +766,7 @@ fn update_project(
     component: &Option<String>,
     template: bool,
     infra: bool,
+    _ctx: &MeshstackContext,
 ) -> anyhow::Result<()> {
     println!("Updating project...");
 

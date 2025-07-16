@@ -826,7 +826,7 @@ fn test_deploy_command_meshstack_yaml_not_found()
         .arg("deploy")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Error: No such file or directory (os error 2)"));
+        .stderr(predicate::str::contains("Error: meshstack.yaml not found or invalid. Run 'meshstack init' first."));
 }
 
 #[test]
