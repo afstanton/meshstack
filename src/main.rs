@@ -2663,32 +2663,7 @@ fn plan_generate_command(args: &[String], verbose: bool) -> anyhow::Result<()> {
                 println!("  • CI/CD: {}", config.ci_cd);
 
                 if verbose {
-                    println!("\n🔧 Language-specific files that would be generated:");
-                    match config.language.as_str() {
-                        "rust" => {
-                            println!("    - Cargo.toml");
-                            println!("    - src/main.rs");
-                            println!("    - Multi-stage Dockerfile");
-                        }
-                        "node" | "javascript" => {
-                            println!("    - package.json");
-                            println!("    - index.js");
-                            println!("    - Node.js Dockerfile");
-                        }
-                        "python" => {
-                            println!("    - requirements.txt");
-                            println!("    - app.py");
-                            println!("    - Python Dockerfile");
-                        }
-                        "go" => {
-                            println!("    - go.mod");
-                            println!("    - main.go");
-                            println!("    - Multi-stage Go Dockerfile");
-                        }
-                        _ => {
-                            println!("    - Generic Dockerfile");
-                        }
-                    }
+                    println!("    - Generic Dockerfile");
                 }
             }
         }
