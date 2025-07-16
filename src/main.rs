@@ -1396,7 +1396,7 @@ fn generate_service_scaffold(
     // Generate Dockerfile
     let dockerfile_path = service_dir.join("Dockerfile");
     if !dockerfile_path.exists() || force {
-        let dockerfile_content = generate_dockerfile_content(config);
+        let dockerfile_content = generate_dockerfile_content();
         if should_write_file(&dockerfile_path, force)? {
             fs::write(&dockerfile_path, dockerfile_content)?;
             generated_files.push(dockerfile_path.to_string_lossy().to_string());
@@ -1461,7 +1461,7 @@ fn generate_project_structure(
     Ok(generated_files)
 }
 
-fn generate_dockerfile_content(config: &MeshstackConfig) -> String {
+fn generate_dockerfile_content() -> String {
 
             // Generic Dockerfile
             r#"FROM alpine:latest
