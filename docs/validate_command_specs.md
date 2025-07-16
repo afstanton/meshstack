@@ -8,7 +8,7 @@ The `meshstack validate` command is responsible for checking the correctness and
 *   **Input**: A boolean flag (its mere presence implies `true`).
 *   **Behavior**:
     *   `meshstack` will parse `meshstack.yaml` and check its structure, data types, and values against an internal or external schema definition.
-    *   It will ensure that all required fields are present and that values conform to expected formats (e.g., valid language names, mesh types).
+    *   It will ensure that all required fields are present and that values conform to expected formats (e.g., valid mesh types).
 *   **Output**:
     *   "`meshstack.yaml` is valid." on success.
     *   Detailed error messages indicating schema violations, missing fields, or invalid values on failure.

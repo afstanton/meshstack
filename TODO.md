@@ -61,12 +61,6 @@
   - ✅ Standardized config access patterns across all commands
   - ✅ Improved error messages with user-friendly feedback
 
-- [x] ~~Language-specific features:~~
-      ✅ **COMPLETED**: Removed `--language` option and language-specific code generation features
-
-  - Meshstack now focuses purely on mesh infrastructure management
-  - Default language set to "generic" for language-agnostic approach
-
 - [ ] **Placeholder logic:**
       Several areas still need full implementation:
   - `validate_ci`: Only checks for `.github/workflows` directory existence, no YAML validation or workflow analysis
@@ -89,7 +83,6 @@
     - ✅ **COMPLETED**: Implemented comprehensive scaffold generation functionality
     - ✅ Supports service-specific scaffold generation with `--service` flag
     - ✅ Full project regeneration with `--all` flag for complete project scaffolds
-    - ✅ Language-specific file generation (Rust, Node.js, Python, Go, generic)
     - ✅ Helm chart generation with proper templates and values files
     - ✅ CI/CD workflow generation (GitHub Actions, ArgoCD)
     - ✅ Environment-specific values files (dev, prod, staging)
@@ -109,7 +102,6 @@
 - **Tests**: 78 comprehensive tests covering all major functionality ✅
 - **Commands**: 10 core commands implemented (`init`, `bootstrap`, `generate`, `plan`, `install`, `validate`, `deploy`, `destroy`, `update`, `status`) ✅
 - **Bootstrap System**: Full local cluster provisioning with Kind/k3d support and automatic infrastructure setup ✅
-- **Generate System**: Comprehensive scaffold generation with language-specific templates and CI/CD workflows ✅
 - **Update System**: Comprehensive update functionality with version checking and Helm chart management ✅
 - **Mocking**: Full test mocking for external dependencies (helm, kubectl, docker, cluster tools) ✅
 - **Error Handling**: Centralized error handling with proper formatting ✅
