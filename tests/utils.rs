@@ -3,13 +3,12 @@ use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::fs;
 
-pub struct CommandUnderTest<'a> {
+pub struct CommandUnderTest {
     cmd: Command,
-    temp_dir_path: &'a Path,
 }
 
-impl<'a> CommandUnderTest<'a> {
-    pub fn new(temp_dir_path: &'a Path) -> Self {
+impl CommandUnderTest {
+    pub fn new(temp_dir_path: &Path) -> Self {
         let mut cmd = Command::cargo_bin("meshstack").unwrap();
         cmd.current_dir(temp_dir_path);
 
@@ -24,7 +23,7 @@ impl<'a> CommandUnderTest<'a> {
             panic!("Templates source directory does not exist: {:?}", templates_src);
         }
 
-        CommandUnderTest { cmd, temp_dir_path }
+        CommandUnderTest { cmd }
     }
 
     pub fn arg(mut self, arg: impl AsRef<std::ffi::OsStr>) -> Self {
@@ -32,15 +31,7 @@ impl<'a> CommandUnderTest<'a> {
         self
     }
 
-    pub fn args(mut self, args: impl IntoIterator<Item = impl AsRef<std::ffi::OsStr>>) -> Self {
-        self.cmd.args(args);
-        self
-    }
 
-    pub fn env(mut self, key: impl AsRef<std::ffi::OsStr>, val: impl AsRef<std::ffi::OsStr>) -> Self {
-        self.cmd.env(key, val);
-        self
-    }
 
     pub fn assert(mut self) -> assert_cmd::assert::Assert {
         self.cmd.assert()
