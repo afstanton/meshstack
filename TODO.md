@@ -46,18 +46,19 @@
 - [x] ~~Error handling:~~
       ✅ **COMPLETED**: Implemented shared `run_command()` utility function that centralizes error output formatting and reduces duplication across all external command calls.
 
-- [ ] **Repetition:**
-      The service/component/context repetition across commands could be refactored into utility structs or helper functions.
+- [x] ~~Repetition:~~
+      ✅ **COMPLETED**: Refactored common parameter patterns into `MeshstackContext` utility struct
 
-  - Consider creating a `MeshstackContext` struct to encapsulate common parameters
-  - Extract common validation logic into shared functions
+  - ✅ Created `MeshstackContext` struct to encapsulate common parameters (config, kube_context, dry_run)
+  - ✅ Eliminated repetitive context parameter passing across all commands
+  - ✅ Added helper methods for consistent Kubernetes context handling
 
-- [ ] **Config loading:**
-      `MeshstackConfig` is currently read during Init, Deploy, and Status commands.
+- [x] ~~Config loading:~~
+      ✅ **COMPLETED**: Implemented centralized config loading with proper error handling
 
-  - Consider implementing a shared config loader function
-  - Add config validation and caching for better performance
-  - Standardize config access patterns across all commands
+  - ✅ Added shared `load_config()` and `require_config()` methods
+  - ✅ Standardized config access patterns across all commands
+  - ✅ Improved error messages with user-friendly feedback
 
 - [x] ~~Language-specific features:~~
       ✅ **COMPLETED**: Removed `--language` option and language-specific code generation features
@@ -97,9 +98,9 @@
 
 3. **Code organization improvements:**
 
-   - Refactor common parameter patterns into utility structs
-   - Create shared config loading utilities
-   - Consider splitting large functions into smaller, focused ones
+   - ✅ ~~Refactor common parameter patterns into utility structs~~
+   - ✅ ~~Create shared config loading utilities~~
+   - Consider splitting large functions into smaller, focused ones (if needed)
 
 4. **User experience enhancements:**
    - Add progress indicators for long-running operations
