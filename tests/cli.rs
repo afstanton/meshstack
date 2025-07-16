@@ -1741,7 +1741,6 @@ fn test_plan_command_generate()
         .stdout(predicate::str::contains("Generation operations that would be performed:"))
         .stdout(predicate::str::contains("• Generate scaffold for service: new-service"))
         .stdout(predicate::str::contains("Current project configuration:"))
-        .stdout(predicate::str::contains("• Language: rust"))
         .stdout(predicate::str::contains("Planning completed successfully!"));
 }
 

@@ -2658,7 +2658,6 @@ fn plan_generate_command(args: &[String], verbose: bool) -> anyhow::Result<()> {
             if let Ok(config) = serde_yaml::from_str::<MeshstackConfig>(&config_content) {
                 println!("\n📋 Current project configuration:");
                 println!("  • Project: {}", config.project_name);
-                println!("  • Language: {}", config.language);
                 println!("  • Service Mesh: {}", config.service_mesh);
                 println!("  • CI/CD: {}", config.ci_cd);
 
