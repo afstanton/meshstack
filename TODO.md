@@ -31,15 +31,16 @@
   - ✅ Use temporary directories for workspace context
   - ✅ All external tool interactions are properly mocked
 
-- [ ] Build helper assertions for CLI tests:
+- [x] Build helper assertions for CLI tests:
   ```rust
   assert_cli("meshstack init")
       .succeeds()
       .prints("Project initialized")
       .creates_file("meshstack.yaml");
   ```
-  - Current tests use `assert_cmd` crate with comprehensive assertions
-  - Could be refactored to use more fluent helper methods
+  - ✅ **COMPLETED**: Implemented `CommandUnderTest` utility in `tests/utils.rs`
+  - ✅ Provides fluent interface for test assertions with automatic template copying
+  - ✅ All 52 tests use comprehensive helper methods for clean, readable test code
 
 ## 🔍 Things to Watch / Improve
 
@@ -68,41 +69,74 @@
 
 - [ ] **Placeholder logic:**
       Several areas still need full implementation:
-  - `validate_ci`: Basic GitHub Actions detection, but no deep validation
-  - `update_project`: All functionality is stubbed out
-  - `bootstrap` command: Planned but not yet implemented
-  - `generate` command: Planned but not yet implemented
-  - `plan` command: Planned but not yet implemented
+  - `validate_ci`: Only checks for `.github/workflows` directory existence, no YAML validation or workflow analysis
+  - ✅ ~~`update_project`: All functionality prints placeholder messages - no actual update logic implemented~~
+    - ✅ **COMPLETED**: Implemented comprehensive update system with version checking and application
+    - ✅ `--check`: Queries for available component/template updates with detailed output
+    - ✅ `--apply`: Performs actual updates to Helm charts and templates
+    - ✅ `--component`: Updates specific infrastructure components with version management
+    - ✅ `--template`: Regenerates project templates from latest versions
+    - ✅ `--infra`: Updates infrastructure chart versions with proper Helm integration
+    - ✅ Added 7 comprehensive tests covering all update scenarios
+  - ✅ ~~`bootstrap` command: Documented in specs but not implemented in CLI~~
+    - ✅ **COMPLETED**: Implemented comprehensive bootstrap functionality for local development
+    - ✅ Supports both Kind and k3d cluster provisioning tools
+    - ✅ Automatic cluster creation with development-friendly configuration
+    - ✅ Automatic infrastructure component installation with dev profile
+    - ✅ Proper kubectl context management and cluster naming
+    - ✅ Added 5 comprehensive tests covering all bootstrap scenarios
+  - ✅ ~~`generate` command: Documented in specs but not implemented in CLI~~
+    - ✅ **COMPLETED**: Implemented comprehensive scaffold generation functionality
+    - ✅ Supports service-specific scaffold generation with `--service` flag
+    - ✅ Full project regeneration with `--all` flag for complete project scaffolds
+    - ✅ Language-specific file generation (Rust, Node.js, Python, Go, generic)
+    - ✅ Helm chart generation with proper templates and values files
+    - ✅ CI/CD workflow generation (GitHub Actions, ArgoCD)
+    - ✅ Environment-specific values files (dev, prod, staging)
+    - ✅ Force overwrite functionality with `--force` flag
+    - ✅ Added 7 comprehensive tests covering all generation scenarios
+  - ✅ ~~`plan` command: Documented in specs but not implemented in CLI~~
+    - ✅ **COMPLETED**: Implemented comprehensive dry-run planning functionality
+    - ✅ Supports planning for all major commands (install, deploy, destroy, update, bootstrap, generate)
+    - ✅ Detailed argument parsing and command-specific planning logic
+    - ✅ Verbose mode for detailed execution plans and prerequisites
+    - ✅ Clear output showing what would be executed without side effects
+    - ✅ Helpful command suggestions for executing planned changes
+    - ✅ Added 8 comprehensive tests covering all planning scenarios
 
-## 📊 Current Project Status
+## 📊 Current Project Status (v0.1.16)
 
-- **Tests**: 52 comprehensive tests covering all major functionality ✅
-- **Commands**: 7 core commands implemented (`init`, `install`, `validate`, `deploy`, `destroy`, `update`, `status`) ✅
-- **Mocking**: Full test mocking for external dependencies (helm, kubectl, docker) ✅
+- **Tests**: 78 comprehensive tests covering all major functionality ✅
+- **Commands**: 10 core commands implemented (`init`, `bootstrap`, `generate`, `plan`, `install`, `validate`, `deploy`, `destroy`, `update`, `status`) ✅
+- **Bootstrap System**: Full local cluster provisioning with Kind/k3d support and automatic infrastructure setup ✅
+- **Generate System**: Comprehensive scaffold generation with language-specific templates and CI/CD workflows ✅
+- **Update System**: Comprehensive update functionality with version checking and Helm chart management ✅
+- **Mocking**: Full test mocking for external dependencies (helm, kubectl, docker, cluster tools) ✅
 - **Error Handling**: Centralized error handling with proper formatting ✅
 - **Documentation**: Complete command specifications and usage docs ✅
 - **Code Quality**: All compiler warnings fixed, clean codebase ✅
+- **Test Infrastructure**: Robust `CommandUnderTest` utility with automatic template management ✅
+- **CI/CD**: GitHub Actions workflow for automated releases to crates.io and Homebrew ✅
 
 ## 🎯 Next Priority Items
 
-1. **Implement missing commands:**
+### High Priority (Enhanced Functionality)
 
-   - `bootstrap` - Set up local Kubernetes cluster and install infrastructure
-   - `plan` - Dry-run preview of changes before applying them
-
-2. **Enhance existing functionality:**
-
-   - Complete `update` command implementation
-   - Improve `validate_ci` with deeper GitHub Actions validation
-   - Add more sophisticated config validation and caching
-
-3. **Code organization improvements:**
-
-   - ✅ ~~Refactor common parameter patterns into utility structs~~
-   - ✅ ~~Create shared config loading utilities~~
-   - Consider splitting large functions into smaller, focused ones (if needed)
+3. **Improve validation capabilities:**
+   - Enhance `validate_ci` with actual GitHub Actions YAML parsing and validation
+   - Add schema validation for `meshstack.yaml` beyond basic YAML parsing
+   - Implement drift detection between actual cluster state and expected configuration
 
 4. **User experience enhancements:**
-   - Add progress indicators for long-running operations
-   - Improve error messages with actionable suggestions
-   - Add colored output for better readability
+   - Add progress indicators for long-running operations (Helm installs, Docker builds)
+   - Implement colored output for better readability
+   - Add interactive prompts for destructive operations
+   - Improve error messages with actionable suggestions and troubleshooting links
+
+### Low Priority (Nice to Have)
+
+5. **Advanced features:**
+   - Add configuration caching and performance optimizations
+   - Implement plugin system for custom components
+   - Add support for additional service meshes beyond Istio/Linkerd
+   - Consider splitting large functions into smaller, focused ones (current code is already well-structured)

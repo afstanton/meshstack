@@ -1026,15 +1026,135 @@ fn test_destroy_command_with_context()
 }
 
 #[test]
-fn test_update_command()
+fn test_update_command_check()
 {
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.arg("update")
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .arg("update")
         .arg("--check")
         .assert()
         .success()
         .stdout(predicate::str::contains("Updating project..."))
-        .stdout(predicate::str::contains("Checking for available updates..."));
+        .stdout(predicate::str::contains("Checking for available updates..."))
+        .stdout(predicate::str::contains("Available Updates:"));
+}
+
+#[test]
+fn test_update_command_apply()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .arg("update")
+        .arg("--apply")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Checking for available updates..."))
+        .stdout(predicate::str::contains("Applying updates..."))
+        .stdout(predicate::str::contains("All updates applied successfully!"));
+}
+
+#[test]
+fn test_update_command_specific_component()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .arg("update")
+        .arg("--component")
+        .arg("istio")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Updating component: istio"))
+        .stdout(predicate::str::contains("DRY RUN: Would execute helm command: helm upgrade istio istio/istio --version 1.1.0"));
+}
+
+#[test]
+fn test_update_command_invalid_component()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("update")
+        .arg("--component")
+        .arg("nonexistent")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown component: nonexistent. Valid components are: istio, prometheus, grafana, cert-manager, nginx-ingress, vault"));
+}
+
+#[test]
+fn test_update_command_template()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("update")
+        .arg("--template")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Updating project templates..."))
+        .stdout(predicate::str::contains("Successfully updated base templates"));
+}
+
+#[test]
+fn test_update_command_infra()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .arg("update")
+        .arg("--infra")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updating project..."))
+        .stdout(predicate::str::contains("Updating infrastructure charts..."));
+}
+
+#[test]
+fn test_update_command_no_config()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("update")
+        .arg("--check")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("meshstack.yaml not found or invalid. Run 'meshstack init' first."));
 }
 
 #[test]
@@ -1170,4 +1290,493 @@ fn test_status_command_all_flags() {
         .stdout(predicate::str::contains("--- Kubernetes Context Status ---"))
         .stdout(predicate::str::contains("Targeting Kubernetes context: my-kube-context"))
         .stdout(predicate::str::contains("Kubernetes context status (placeholder): Connected"));
+}
+#[test]
+fn test_bootstrap_command_kind()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_CLUSTER", "1")
+        .env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .env("MESHSTACK_TEST_DRY_RUN_KUBECTL", "1")
+        .arg("bootstrap")
+        .arg("--kind")
+        .arg("--name")
+        .arg("test-cluster")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Bootstrapping local Kubernetes cluster..."))
+        .stdout(predicate::str::contains("Using kind for local cluster provisioning"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if kind is installed"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if cluster 'test-cluster' exists"))
+        .stdout(predicate::str::contains("DRY RUN: Would create cluster 'test-cluster' using kind"))
+        .stdout(predicate::str::contains("DRY RUN: Would set kubectl context to 'kind-test-cluster'"))
+        .stdout(predicate::str::contains("Installing infrastructure components..."))
+        .stdout(predicate::str::contains("Local cluster bootstrap completed!"));
+}
+
+#[test]
+fn test_bootstrap_command_k3d()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_CLUSTER", "1")
+        .env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .env("MESHSTACK_TEST_DRY_RUN_KUBECTL", "1")
+        .arg("bootstrap")
+        .arg("--k3d")
+        .arg("--name")
+        .arg("test-cluster")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Bootstrapping local Kubernetes cluster..."))
+        .stdout(predicate::str::contains("Using k3d for local cluster provisioning"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if k3d is installed"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if cluster 'test-cluster' exists"))
+        .stdout(predicate::str::contains("DRY RUN: Would create cluster 'test-cluster' using k3d"))
+        .stdout(predicate::str::contains("DRY RUN: Would set kubectl context to 'k3d-test-cluster'"))
+        .stdout(predicate::str::contains("Installing infrastructure components..."))
+        .stdout(predicate::str::contains("Local cluster bootstrap completed!"));
+}
+
+#[test]
+fn test_bootstrap_command_default_kind()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_CLUSTER", "1")
+        .env("MESHSTACK_TEST_DRY_RUN_HELM", "1")
+        .env("MESHSTACK_TEST_DRY_RUN_KUBECTL", "1")
+        .arg("bootstrap")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Bootstrapping local Kubernetes cluster..."))
+        .stdout(predicate::str::contains("Using kind for local cluster provisioning"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if kind is installed"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if cluster 'meshstack-dev' exists"))
+        .stdout(predicate::str::contains("DRY RUN: Would create cluster 'meshstack-dev' using kind"))
+        .stdout(predicate::str::contains("DRY RUN: Would set kubectl context to 'kind-meshstack-dev'"))
+        .stdout(predicate::str::contains("Installing infrastructure components..."))
+        .stdout(predicate::str::contains("Local cluster bootstrap completed!"));
+}
+
+#[test]
+fn test_bootstrap_command_skip_install()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("MESHSTACK_TEST_DRY_RUN_CLUSTER", "1")
+        .env("MESHSTACK_TEST_DRY_RUN_KUBECTL", "1")
+        .arg("bootstrap")
+        .arg("--skip-install")
+        .arg("--name")
+        .arg("test-cluster")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Bootstrapping local Kubernetes cluster..."))
+        .stdout(predicate::str::contains("Using kind for local cluster provisioning"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if kind is installed"))
+        .stdout(predicate::str::contains("DRY RUN: Would check if cluster 'test-cluster' exists"))
+        .stdout(predicate::str::contains("DRY RUN: Would create cluster 'test-cluster' using kind"))
+        .stdout(predicate::str::contains("DRY RUN: Would set kubectl context to 'kind-test-cluster'"))
+        .stdout(predicate::str::contains("Skipping infrastructure component installation"))
+        .stdout(predicate::str::contains("Local cluster bootstrap completed!"));
+}
+
+#[test]
+fn test_bootstrap_command_tool_not_found()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .env("PATH", "/nonexistent/path") // Set PATH to a directory that doesn't contain kind/k3d
+        .arg("bootstrap")
+        .arg("--kind")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("kind is not installed or not found in PATH. Please install kind to proceed."))
+        .stderr(predicate::str::contains("Installation instructions:"));
+}
+#[test]
+fn test_generate_command_specific_service()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("generate")
+        .arg("--service")
+        .arg("my-service")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Generating scaffolds and configuration files..."))
+        .stdout(predicate::str::contains("Generating scaffold for service: my-service"))
+        .stdout(predicate::str::contains("Created service directory:"))
+        .stdout(predicate::str::contains("Successfully generated"));
+
+    // Verify files were created
+    let service_dir = temp_dir.path().join("services").join("my-service");
+    assert!(service_dir.exists());
+    assert!(service_dir.join("Dockerfile").exists());
+    assert!(service_dir.join("Chart.yaml").exists());
+    assert!(service_dir.join("Cargo.toml").exists());
+    assert!(service_dir.join("src").join("main.rs").exists());
+}
+
+#[test]
+fn test_generate_command_all()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: node\nservice_mesh: linkerd\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    // Create an existing service to test regeneration
+    let existing_service_dir = temp_dir.path().join("services").join("existing-service");
+    fs::create_dir_all(&existing_service_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("generate")
+        .arg("--all")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Generating scaffolds and configuration files..."))
+        .stdout(predicate::str::contains("Re-generating all project scaffolds and configurations..."))
+        .stdout(predicate::str::contains("Re-generating scaffold for existing service: existing-service"))
+        .stdout(predicate::str::contains("Successfully generated"));
+
+    // Verify project structure was created
+    assert!(temp_dir.path().join("services").exists());
+    assert!(temp_dir.path().join("provision").exists());
+    assert!(temp_dir.path().join(".github").join("workflows").join("meshstack.yml").exists());
+    assert!(temp_dir.path().join("dev-values.yaml").exists());
+    assert!(temp_dir.path().join("prod-values.yaml").exists());
+
+    // Verify existing service was regenerated
+    assert!(existing_service_dir.join("Dockerfile").exists());
+    assert!(existing_service_dir.join("package.json").exists());
+}
+
+#[test]
+fn test_generate_command_default()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: argo";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("generate")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Generating scaffolds and configuration files..."))
+        .stdout(predicate::str::contains("Re-generating project-level configurations..."))
+        .stdout(predicate::str::contains("Successfully generated"));
+
+    // Verify project-level files were created
+    assert!(temp_dir.path().join("services").exists());
+    assert!(temp_dir.path().join("provision").exists());
+    assert!(temp_dir.path().join("argocd").join("application.yaml").exists());
+    assert!(temp_dir.path().join("dev-values.yaml").exists());
+}
+
+#[test]
+fn test_generate_command_force_overwrite()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: python\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    // Create existing file
+    let service_dir = temp_dir.path().join("services").join("test-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    let dockerfile_path = service_dir.join("Dockerfile");
+    fs::write(&dockerfile_path, "# Existing content").unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("generate")
+        .arg("--service")
+        .arg("test-service")
+        .arg("--force")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Generating scaffolds and configuration files..."))
+        .stdout(predicate::str::contains("Generating scaffold for service: test-service"))
+        .stdout(predicate::str::contains("Successfully generated"));
+
+    // Verify file was overwritten (should contain Python-specific content)
+    let dockerfile_content = fs::read_to_string(&dockerfile_path).unwrap();
+    assert!(dockerfile_content.contains("FROM python:3.11-slim"));
+}
+
+#[test]
+fn test_generate_command_no_force_existing_files()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    // Create existing files
+    let service_dir = temp_dir.path().join("services").join("test-service");
+    fs::create_dir_all(&service_dir).unwrap();
+    let dockerfile_path = service_dir.join("Dockerfile");
+    fs::write(&dockerfile_path, "# Existing content").unwrap();
+    let chart_path = service_dir.join("Chart.yaml");
+    fs::write(&chart_path, "# Existing chart").unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("generate")
+        .arg("--service")
+        .arg("test-service")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Generating scaffolds and configuration files..."))
+        .stdout(predicate::str::contains("Generating scaffold for service: test-service"));
+
+    // Verify files were not overwritten
+    let dockerfile_content = fs::read_to_string(&dockerfile_path).unwrap();
+    assert_eq!(dockerfile_content, "# Existing content");
+    let chart_content = fs::read_to_string(&chart_path).unwrap();
+    assert_eq!(chart_content, "# Existing chart");
+}
+
+#[test]
+fn test_generate_command_no_config()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("generate")
+        .arg("--service")
+        .arg("test-service")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("meshstack.yaml not found or invalid. Run 'meshstack init' first."));
+}
+
+#[test]
+fn test_generate_command_different_languages()
+{
+    let temp_dir = tempdir().unwrap();
+
+    // Test Rust generation
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("generate")
+        .arg("--service")
+        .arg("rust-service")
+        .assert()
+        .success();
+
+    let rust_service_dir = temp_dir.path().join("services").join("rust-service");
+    assert!(rust_service_dir.join("Cargo.toml").exists());
+    assert!(rust_service_dir.join("src").join("main.rs").exists());
+
+    let dockerfile_content = fs::read_to_string(rust_service_dir.join("Dockerfile")).unwrap();
+    assert!(dockerfile_content.contains("FROM rust:1.70 as builder"));
+}
+#[test]
+fn test_plan_command_install()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("install")
+        .arg("--component")
+        .arg("istio")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Planning execution of 'install' command..."))
+        .stdout(predicate::str::contains("Planning 'install' command execution:"))
+        .stdout(predicate::str::contains("Components that would be installed:"))
+        .stdout(predicate::str::contains("• istio (from chart: istio/istio)"))
+        .stdout(predicate::str::contains("Prerequisites:"))
+        .stdout(predicate::str::contains("Planning completed successfully!"));
+}
+
+#[test]
+fn test_plan_command_deploy()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    // Create a service directory
+    let service_dir = temp_dir.path().join("services").join("test-service");
+    fs::create_dir_all(&service_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("deploy")
+        .arg("--service")
+        .arg("test-service")
+        .arg("--build")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Planning execution of 'deploy' command..."))
+        .stdout(predicate::str::contains("Planning 'deploy' command execution:"))
+        .stdout(predicate::str::contains("Services that would be deployed:"))
+        .stdout(predicate::str::contains("• test-service"))
+        .stdout(predicate::str::contains("Deployment steps that would be executed:"))
+        .stdout(predicate::str::contains("1. Build Docker images for services"))
+        .stdout(predicate::str::contains("Planning completed successfully!"));
+}
+
+#[test]
+fn test_plan_command_destroy()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("destroy")
+        .arg("--service")
+        .arg("my-service")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Planning execution of 'destroy' command..."))
+        .stdout(predicate::str::contains("Planning 'destroy' command execution:"))
+        .stdout(predicate::str::contains("Resources that would be destroyed:"))
+        .stdout(predicate::str::contains("• Service: my-service (Helm release: meshstack-my-service)"))
+        .stdout(predicate::str::contains("DANGER ZONE:"))
+        .stdout(predicate::str::contains("Planning completed successfully!"));
+}
+
+#[test]
+fn test_plan_command_update()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("update")
+        .arg("--check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Planning execution of 'update' command..."))
+        .stdout(predicate::str::contains("Planning 'update' command execution:"))
+        .stdout(predicate::str::contains("Update operations that would be performed:"))
+        .stdout(predicate::str::contains("• Check for available updates"))
+        .stdout(predicate::str::contains("Prerequisites:"))
+        .stdout(predicate::str::contains("Planning completed successfully!"));
+}
+
+#[test]
+fn test_plan_command_bootstrap()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("bootstrap")
+        .arg("--k3d")
+        .arg("--name")
+        .arg("test-cluster")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Planning execution of 'bootstrap' command..."))
+        .stdout(predicate::str::contains("Planning 'bootstrap' command execution:"))
+        .stdout(predicate::str::contains("Bootstrap operations that would be performed:"))
+        .stdout(predicate::str::contains("• Create local Kubernetes cluster using k3d"))
+        .stdout(predicate::str::contains("• Cluster name: test-cluster"))
+        .stdout(predicate::str::contains("• Install infrastructure components (dev profile):"))
+        .stdout(predicate::str::contains("Prerequisites:"))
+        .stdout(predicate::str::contains("Planning completed successfully!"));
+}
+
+#[test]
+fn test_plan_command_generate()
+{
+    let temp_dir = tempdir().unwrap();
+    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
+    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    fs::write(&meshstack_yaml_path, config_content).unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("generate")
+        .arg("--service")
+        .arg("new-service")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Planning execution of 'generate' command..."))
+        .stdout(predicate::str::contains("Planning 'generate' command execution:"))
+        .stdout(predicate::str::contains("Generation operations that would be performed:"))
+        .stdout(predicate::str::contains("• Generate scaffold for service: new-service"))
+        .stdout(predicate::str::contains("Current project configuration:"))
+        .stdout(predicate::str::contains("• Language: rust"))
+        .stdout(predicate::str::contains("Planning completed successfully!"));
+}
+
+#[test]
+fn test_plan_command_verbose()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("install")
+        .arg("--verbose")
+        .arg("--component")
+        .arg("prometheus")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Planning execution of 'install' command..."))
+        .stdout(predicate::str::contains("Verbose mode enabled - showing detailed planning information"))
+        .stdout(predicate::str::contains("- Helm command: helm install prometheus prometheus-community/prometheus"))
+        .stdout(predicate::str::contains("Planning completed successfully!"));
+}
+
+#[test]
+fn test_plan_command_invalid_command()
+{
+    let temp_dir = tempdir().unwrap();
+
+    let mut cmd = Command::cargo_bin("meshstack").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("plan")
+        .arg("--command")
+        .arg("invalid-command")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown command 'invalid-command' for planning. Supported commands: install, deploy, destroy, update, bootstrap, generate"));
 }
