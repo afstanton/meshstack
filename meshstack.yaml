@@ -1,4 +1,3 @@
 project_name: test-project
-language: generic
 service_mesh: istio
 ci_cd: github

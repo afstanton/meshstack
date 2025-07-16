@@ -53,7 +53,7 @@ fn test_init_command_with_config_file()
 {
     let temp_dir = tempdir().unwrap();
     let config_path = temp_dir.path().join("test_config.yaml");
-    let config_content = "project_name: my-test-app\nlanguage: generic\nservice_mesh: linkerd\nci_cd: argo";
+    let config_content = "project_name: my-test-app\nservice_mesh: linkerd\nci_cd: argo";
     fs::write(&config_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -68,7 +68,6 @@ fn test_init_command_with_config_file()
     let meshstack_yaml_content = fs::read_to_string(meshstack_yaml_path).unwrap();
 
     assert!(predicate::str::contains("project_name: my-test-app").eval(&meshstack_yaml_content));
-    assert!(predicate::str::contains("language: generic").eval(&meshstack_yaml_content));
     assert!(predicate::str::contains("service_mesh: linkerd").eval(&meshstack_yaml_content));
     assert!(predicate::str::contains("ci_cd: argo").eval(&meshstack_yaml_content));
 }
@@ -89,7 +88,6 @@ fn test_init_command_with_name()
     let meshstack_yaml_content = fs::read_to_string(meshstack_yaml_path).unwrap();
 
     assert!(predicate::str::contains("project_name: my-named-app").eval(&meshstack_yaml_content));
-    assert!(predicate::str::contains("language: generic").eval(&meshstack_yaml_content)); // Default language
     assert!(predicate::str::contains("service_mesh: istio").eval(&meshstack_yaml_content)); // Default service mesh
     assert!(predicate::str::contains("ci_cd: github").eval(&meshstack_yaml_content)); // Default CI/CD
 }
@@ -112,7 +110,6 @@ fn test_init_command_with_mesh()
     let meshstack_yaml_content = fs::read_to_string(meshstack_yaml_path).unwrap();
 
     assert!(predicate::str::contains("project_name: my-app").eval(&meshstack_yaml_content)); // Default project name
-    assert!(predicate::str::contains("language: generic").eval(&meshstack_yaml_content)); // Default language
     assert!(predicate::str::contains("service_mesh: linkerd").eval(&meshstack_yaml_content));
     assert!(predicate::str::contains("ci_cd: github").eval(&meshstack_yaml_content)); // Default CI/CD
 }
@@ -249,7 +246,7 @@ fn test_validate_config_command_success()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -281,7 +278,7 @@ fn test_validate_config_command_invalid_yaml()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github: invalid_line"; // Invalid YAML
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github: invalid_line"; // Invalid YAML
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -373,7 +370,7 @@ fn test_validate_full_command_success()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     // Create a mock kubectl that always succeeds
@@ -423,7 +420,7 @@ fn test_validate_full_command_failure_cluster()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     // Create a mock kubectl that always fails
@@ -448,7 +445,7 @@ fn test_deploy_command_all_services()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -475,7 +472,7 @@ fn test_deploy_command_all_services()
         .assert()
         .success()
         .stdout(predicate::str::contains("Deploying service..."))
-        .stdout(predicate::str::contains("Building Docker image for my-service (language: generic)..."))
+        .stdout(predicate::str::contains("Building Docker image for my-service..."))
         .stdout(predicate::str::contains("Successfully built Docker image: meshstack/my-service:latest"))
         .stdout(predicate::str::contains("Pushing Docker image for my-service to registry..."))
         .stdout(predicate::str::contains("Successfully pushed Docker image: meshstack/my-service:latest"))
@@ -489,7 +486,7 @@ fn test_deploy_command_specific_service()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-specific-service");
@@ -518,7 +515,7 @@ fn test_deploy_command_specific_service()
         .assert()
         .success()
         .stdout(predicate::str::contains("Deploying service..."))
-        .stdout(predicate::str::contains("Building Docker image for my-specific-service (language: generic)..."))
+        .stdout(predicate::str::contains("Building Docker image for my-specific-service..."))
         .stdout(predicate::str::contains("Successfully built Docker image: meshstack/my-specific-service:latest"))
         .stdout(predicate::str::contains("Pushing Docker image for my-specific-service to registry..."))
         .stdout(predicate::str::contains("Successfully pushed Docker image: meshstack/my-specific-service:latest"))
@@ -532,7 +529,7 @@ fn test_deploy_command_with_env()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -565,7 +562,7 @@ fn test_deploy_command_deployment_fails()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -595,7 +592,7 @@ fn test_deploy_command_invalid_env()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -618,7 +615,7 @@ fn test_deploy_command_with_build()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -644,7 +641,7 @@ fn test_deploy_command_with_build()
         .assert()
         .success()
         .stdout(predicate::str::contains("Deploying service..."))
-        .stdout(predicate::str::contains("Building Docker image for my-service (language: generic)..."))
+        .stdout(predicate::str::contains("Building Docker image for my-service..."))
         .stdout(predicate::str::contains("Mock Docker build success"))
         .stdout(predicate::str::contains("Deploying Helm chart for service: my-service..."))
         .stdout(predicate::str::contains("Successfully deployed service: my-service"));
@@ -655,7 +652,7 @@ fn test_deploy_command_with_push()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -692,7 +689,7 @@ fn test_deploy_command_with_context()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -725,7 +722,7 @@ fn test_build_docker_image_dry_run()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -747,7 +744,7 @@ fn test_push_docker_image_dry_run()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -783,7 +780,7 @@ fn test_deploy_command_no_services_found()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let services_dir = temp_dir.path().join("services");
@@ -803,7 +800,7 @@ fn test_deploy_command_services_dir_not_found()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -834,7 +831,7 @@ fn test_deploy_command_dockerfile_not_found()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -855,7 +852,7 @@ fn test_deploy_command_docker_build_fails()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -883,7 +880,7 @@ fn test_deploy_command_docker_push_fails()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -979,7 +976,7 @@ fn test_destroy_command_with_full()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let service_dir = temp_dir.path().join("services").join("my-service");
@@ -1030,7 +1027,7 @@ fn test_update_command_check()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1050,7 +1047,7 @@ fn test_update_command_apply()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1071,7 +1068,7 @@ fn test_update_command_specific_component()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1092,7 +1089,7 @@ fn test_update_command_invalid_component()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1110,7 +1107,7 @@ fn test_update_command_template()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1129,7 +1126,7 @@ fn test_update_command_infra()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1162,7 +1159,7 @@ fn test_status_command()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     CommandUnderTest::new(temp_dir.path())
@@ -1177,7 +1174,7 @@ fn test_status_command_components()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     CommandUnderTest::new(temp_dir.path())
@@ -1196,7 +1193,7 @@ fn test_status_command_services()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let services_dir = temp_dir.path().join("services");
@@ -1218,7 +1215,7 @@ fn test_status_command_lockfile()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let lockfile_path = temp_dir.path().join("meshstack.lock");
@@ -1239,7 +1236,7 @@ fn test_status_command_context()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1259,7 +1256,7 @@ fn test_status_command_context()
 fn test_status_command_all_flags() {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let services_dir = temp_dir.path().join("services");
@@ -1411,7 +1408,7 @@ fn test_generate_command_specific_service()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1431,8 +1428,6 @@ fn test_generate_command_specific_service()
     assert!(service_dir.exists());
     assert!(service_dir.join("Dockerfile").exists());
     assert!(service_dir.join("Chart.yaml").exists());
-    assert!(service_dir.join("Cargo.toml").exists());
-    assert!(service_dir.join("src").join("main.rs").exists());
 }
 
 #[test]
@@ -1440,7 +1435,7 @@ fn test_generate_command_all()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: node\nservice_mesh: linkerd\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: linkerd\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     // Create an existing service to test regeneration
@@ -1467,7 +1462,6 @@ fn test_generate_command_all()
 
     // Verify existing service was regenerated
     assert!(existing_service_dir.join("Dockerfile").exists());
-    assert!(existing_service_dir.join("package.json").exists());
 }
 
 #[test]
@@ -1475,7 +1469,7 @@ fn test_generate_command_default()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: generic\nservice_mesh: istio\nci_cd: argo";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: argo";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();
@@ -1499,7 +1493,7 @@ fn test_generate_command_force_overwrite()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: python\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     // Create existing file
@@ -1519,10 +1513,6 @@ fn test_generate_command_force_overwrite()
         .stdout(predicate::str::contains("Generating scaffolds and configuration files..."))
         .stdout(predicate::str::contains("Generating scaffold for service: test-service"))
         .stdout(predicate::str::contains("Successfully generated"));
-
-    // Verify file was overwritten (should contain Python-specific content)
-    let dockerfile_content = fs::read_to_string(&dockerfile_path).unwrap();
-    assert!(dockerfile_content.contains("FROM python:3.11-slim"));
 }
 
 #[test]
@@ -1530,7 +1520,7 @@ fn test_generate_command_no_force_existing_files()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     // Create existing files
@@ -1574,31 +1564,6 @@ fn test_generate_command_no_config()
 }
 
 #[test]
-fn test_generate_command_different_languages()
-{
-    let temp_dir = tempdir().unwrap();
-
-    // Test Rust generation
-    let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
-    fs::write(&meshstack_yaml_path, config_content).unwrap();
-
-    let mut cmd = Command::cargo_bin("meshstack").unwrap();
-    cmd.current_dir(temp_dir.path())
-        .arg("generate")
-        .arg("--service")
-        .arg("rust-service")
-        .assert()
-        .success();
-
-    let rust_service_dir = temp_dir.path().join("services").join("rust-service");
-    assert!(rust_service_dir.join("Cargo.toml").exists());
-    assert!(rust_service_dir.join("src").join("main.rs").exists());
-
-    let dockerfile_content = fs::read_to_string(rust_service_dir.join("Dockerfile")).unwrap();
-    assert!(dockerfile_content.contains("FROM rust:1.70 as builder"));
-}
-#[test]
 fn test_plan_command_install()
 {
     let temp_dir = tempdir().unwrap();
@@ -1625,7 +1590,7 @@ fn test_plan_command_deploy()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     // Create a service directory
@@ -1724,7 +1689,7 @@ fn test_plan_command_generate()
 {
     let temp_dir = tempdir().unwrap();
     let meshstack_yaml_path = temp_dir.path().join("meshstack.yaml");
-    let config_content = "project_name: my-app\nlanguage: rust\nservice_mesh: istio\nci_cd: github";
+    let config_content = "project_name: my-app\nservice_mesh: istio\nci_cd: github";
     fs::write(&meshstack_yaml_path, config_content).unwrap();
 
     let mut cmd = Command::cargo_bin("meshstack").unwrap();

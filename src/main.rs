@@ -207,7 +207,6 @@ enum Commands {
 #[derive(Serialize, Deserialize, Clone)]
 struct MeshstackConfig {
     project_name: String,
-    language: String,
     service_mesh: String,
     ci_cd: String,
 }
@@ -275,7 +274,6 @@ fn main() -> Result<()> {
             } else {
                 MeshstackConfig {
                     project_name: name.clone().unwrap_or_else(|| "my-app".to_string()),
-                    language: "generic".to_string(), // Language-agnostic mesh apps
                     service_mesh: mesh.clone().unwrap_or_else(|| "istio".to_string()),
                     ci_cd: ci.clone().unwrap_or_else(|| "github".to_string()),
                 }
@@ -630,7 +628,7 @@ fn uninstall_helm_release(release_name: &str, ctx: &MeshstackContext) -> anyhow:
 }
 
 fn build_docker_image(service_path: &Path, service_name: &str, _config: &MeshstackConfig) -> anyhow::Result<()> {
-    println!("Building Docker image for {} (language: {})...", service_name, _config.language);
+    println!("Building Docker image for {}...", service_name);
     let dockerfile_path = service_path.join("Dockerfile");
     if !dockerfile_path.exists() {
         anyhow::bail!("Dockerfile not found in {}.", service_path.display());
@@ -1107,7 +1105,6 @@ fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-// Removed copy_template_for_language function
 fn bootstrap_local_cluster(
     use_kind: bool,
     use_k3d: bool,
@@ -1409,11 +1406,6 @@ fn generate_service_scaffold(
     // Generate Helm Chart
     generated_files.extend(generate_helm_chart(service_name, &service_dir, config, force)?);
 
-    // Generate basic application files based on language (if not generic)
-    if config.language != "generic" {
-        generated_files.extend(generate_app_files(service_name, &service_dir, config, force)?);
-    }
-
     Ok(generated_files)
 }
 
@@ -1470,81 +1462,8 @@ fn generate_project_structure(
 }
 
 fn generate_dockerfile_content(config: &MeshstackConfig) -> String {
-    match config.language.as_str() {
-        "rust" => {
-            r#"# Multi-stage build for Rust
-FROM rust:1.70 as builder
 
-WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-
-RUN cargo build --release
-
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /app/target/release/app /usr/local/bin/app
-
-EXPOSE 8080
-CMD ["app"]
-"#.to_string()
-        }
-        "node" | "javascript" => {
-            r#"FROM node:18-alpine
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-
-EXPOSE 3000
-USER node
-
-CMD ["npm", "start"]
-"#.to_string()
-        }
-        "python" => {
-            r#"FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 8000
-USER 1000
-
-CMD ["python", "app.py"]
-"#.to_string()
-        }
-        "go" => {
-            r#"# Multi-stage build for Go
-FROM golang:1.21-alpine AS builder
-
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-
-COPY --from=builder /app/main .
-
-EXPOSE 8080
-CMD ["./main"]
-"#.to_string()
-        }
-        _ => {
-            // Generic/language-agnostic Dockerfile
+            // Generic Dockerfile
             r#"FROM alpine:latest
 
 # Install basic utilities
@@ -1564,8 +1483,7 @@ EXPOSE 8080
 CMD ["echo", "Please customize this Dockerfile for your specific application"]
 "#.to_string()
         }
-    }
-}
+
 
 fn generate_helm_chart(
     service_name: &str,
@@ -1747,144 +1665,6 @@ affinity: {{}}
 "#,
         service_name, service_name
     )
-}
-
-fn generate_app_files(
-    service_name: &str,
-    service_dir: &Path,
-    config: &MeshstackConfig,
-    force: bool,
-) -> anyhow::Result<Vec<String>> {
-    let mut generated_files = Vec::new();
-
-    match config.language.as_str() {
-        "rust" => {
-            // Generate Cargo.toml
-            let cargo_toml_path = service_dir.join("Cargo.toml");
-            if !cargo_toml_path.exists() || force {
-                let cargo_content = format!(
-                    r#"[package]
-name = "{}"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-tokio = {{ version = "1.0", features = ["full"] }}
-warp = "0.3"
-serde = {{ version = "1.0", features = ["derive"] }}
-serde_json = "1.0"
-"#,
-                    service_name
-                );
-                if should_write_file(&cargo_toml_path, force)? {
-                    fs::write(&cargo_toml_path, cargo_content)?;
-                    generated_files.push(cargo_toml_path.to_string_lossy().to_string());
-                }
-            }
-
-            // Generate basic main.rs
-            let src_dir = service_dir.join("src");
-            if !src_dir.exists() {
-                fs::create_dir_all(&src_dir)?;
-            }
-
-            let main_rs_path = src_dir.join("main.rs");
-            if !main_rs_path.exists() || force {
-                let main_content = r#"use warp::Filter;
-
-#[tokio::main]
-async fn main() {
-    let health = warp::path("health")
-        .map(|| "OK");
-
-    let ready = warp::path("ready")
-        .map(|| "Ready");
-
-    let hello = warp::path::end()
-        .map(|| "Hello from Meshstack service!");
-
-    let routes = health.or(ready).or(hello);
-
-    println!("Starting server on port 8080");
-    warp::serve(routes)
-        .run(([0, 0, 0, 0], 8080))
-        .await;
-}
-"#;
-                if should_write_file(&main_rs_path, force)? {
-                    fs::write(&main_rs_path, main_content)?;
-                    generated_files.push(main_rs_path.to_string_lossy().to_string());
-                }
-            }
-        }
-        "node" | "javascript" => {
-            // Generate package.json
-            let package_json_path = service_dir.join("package.json");
-            if !package_json_path.exists() || force {
-                let package_content = format!(
-                    r#"{{
-  "name": "{}",
-  "version": "1.0.0",
-  "description": "Meshstack service",
-  "main": "index.js",
-  "scripts": {{
-    "start": "node index.js",
-    "dev": "nodemon index.js"
-  }},
-  "dependencies": {{
-    "express": "^4.18.0"
-  }},
-  "devDependencies": {{
-    "nodemon": "^2.0.0"
-  }}
-}}
-"#,
-                    service_name
-                );
-                if should_write_file(&package_json_path, force)? {
-                    fs::write(&package_json_path, package_content)?;
-                    generated_files.push(package_json_path.to_string_lossy().to_string());
-                }
-            }
-
-            // Generate basic index.js
-            let index_js_path = service_dir.join("index.js");
-            if !index_js_path.exists() || force {
-                let index_content = r#"const express = require('express');
-const app = express();
-const port = process.env.PORT || 8080;
-
-app.use(express.json());
-
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello from Meshstack service!' });
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK' });
-});
-
-app.get('/ready', (req, res) => {
-  res.json({ status: 'Ready' });
-});
-
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Server running on port ${port}`);
-});
-"#;
-                if should_write_file(&index_js_path, force)? {
-                    fs::write(&index_js_path, index_content)?;
-                    generated_files.push(index_js_path.to_string_lossy().to_string());
-                }
-            }
-        }
-        _ => {
-            // For other languages or generic, just create a placeholder
-            println!("Language-specific files not implemented for: {}", config.language);
-        }
-    }
-
-    Ok(generated_files)
 }
 
 fn generate_github_actions_workflow(
@@ -2624,9 +2404,8 @@ fn plan_generate_command(args: &[String], verbose: bool) -> anyhow::Result<()> {
         println!("  • Generate scaffold for service: {}", svc_name);
         if verbose {
             println!("    - Create service directory: services/{}", svc_name);
-            println!("    - Generate Dockerfile (language-specific)");
+            println!("    - Generate Dockerfile");
             println!("    - Generate Helm chart (Chart.yaml, templates/, values.yaml)");
-            println!("    - Generate application files (if language-specific)");
         }
     } else if all {
         println!("  • Re-generate all project scaffolds and configurations");
