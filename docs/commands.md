@@ -13,7 +13,6 @@ This document outlines the core CLI commands available in Meshstack v0.1. Each c
 | Flag | Description |
 |------|-------------|
 | `--name <project>` | Name of the project (default: current directory) |
-| `--language <lang>` | App language (`rust`, `go`, `python`, `node`) |
 | `--mesh <istio|linkerd>` | Choose service mesh (default: `istio`) |
 | `--ci <github|argo>` | CI/CD preference |
 | `--config <path>` | Use preexisting meshstack.yaml config |

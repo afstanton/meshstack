@@ -20,10 +20,6 @@ enum Commands {
         #[arg(short, long)]
         name: Option<String>,
 
-        /// App language (`rust`, `go`, `python`, `node`)
-        #[arg(short, long)]
-        language: Option<String>,
-
         /// Choose service mesh (istio or linkerd)
         #[arg(short, long)]
         mesh: Option<String>,
@@ -174,7 +170,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Init { name, language, mesh, ci, config } => {
+        Commands::Init { name, mesh, ci, config } => {
             println!("Initializing new meshstack project...");
 
             let config_to_write = if let Some(config_path) = config {
@@ -184,7 +180,7 @@ fn main() -> Result<()> {
             } else {
                 MeshstackConfig {
                     project_name: name.clone().unwrap_or_else(|| "my-app".to_string()),
-                    language: language.clone().unwrap_or_else(|| "rust".to_string()),
+                    language: "generic".to_string(), // Language-agnostic mesh apps
                     service_mesh: mesh.clone().unwrap_or_else(|| "istio".to_string()),
                     ci_cd: ci.clone().unwrap_or_else(|| "github".to_string()),
                 }
